@@ -7,25 +7,27 @@ current; tick boxes as work lands.
 
 - [x] Research notes (`docs/research/01` to `03`)
 - [x] Engineering specs ES-01 to ES-04; regular specs RS-01 to RS-06
-- [ ] CMake skeleton: `shunt_net`, `shunt_clock`, `shunt_log` (plain C++17, no JUCE), `ShuntTests` (Catch2), `shuntsim`
-- [ ] CI: Linux build and unit tests on every PR; aarch64 cross job
+- [x] CMake skeleton: `shunt_net`, `shunt_clock`, `shunt_log` (plain C++17, no JUCE), `ShuntTests` (self-contained test header instead of Catch2), `shuntsim`
+- [x] CI: Linux build and unit tests on every PR (`ci.yml`)
+- [ ] CI: aarch64 cross job
 - [ ] Legal wording file (`LEGAL.md`) with the ES-04 section 6 text
 - [ ] Ableton Link licence request (joint with Pacemaker)
 - [ ] Obtain the two dysentery captures into `Tests/captures/` with a manifest
 
 ## Phase 1: Protocol core (2 to 3 weeks)
 
-- [ ] Packet parsers and builders per ES-02 with golden tests P-T1 to P-T4
-- [ ] Device table, model inference and capability flags (ES-01 section 4)
-- [ ] Claim state machine with CDJ-3000-compatible keep-alive (ES-01 section 5); tests N-T3, N-T4
-- [ ] Master tracker (ES-01 section 6); test N-T5
-- [ ] pcapng writer and replayer; replay tests N-T2
-- [ ] ShuntSim with the scripted scenarios (RS-05)
-- [ ] Socket layer with interface selection, broadcast, SO_TIMESTAMPNS, Passive mode; test N-T6
+- [x] Packet parsers and builders per ES-02 with golden tests P-T1 to P-T4
+- [x] Device table, model inference and capability flags (ES-01 section 4)
+- [x] Claim state machine with CDJ-3000-compatible keep-alive (ES-01 section 5); tests N-T3, N-T4
+- [x] Master tracker (ES-01 section 6); test N-T5
+- [x] pcapng writer and replayer (`shunt_cli --replay`)
+- [ ] Replay tests N-T2 (need the dysentery captures)
+- [x] ShuntSim with the scripted scenarios (RS-05)
+- [x] Socket layer with interface selection, broadcast, SO_TIMESTAMPNS, Passive mode; test N-T6
 
 ## Phase 2: Clock engine and outputs (2 to 3 weeks)
 
-- [ ] Estimator, reset rules, bar phase, state machine (ES-03); tests C-T1 to C-T10
+- [x] Estimator, reset rules, bar phase, state machine (ES-03); tests C-T1 to C-T10
 - [ ] Extract `clockout` from Pacemaker and adapt (RS-01)
 - [ ] Link output with quantum 4/1 and soft/hard phase policy
 - [ ] MIDI clock output with pause behaviour options and virtual port
