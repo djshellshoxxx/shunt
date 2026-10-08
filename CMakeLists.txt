@@ -31,7 +31,7 @@ add_library(shunt_clock STATIC clock/src/ClockEngine.cpp)
 target_include_directories(shunt_clock PUBLIC clock/include net/include)
 
 # ---- shunt_log: tracklist events and exporters
-add_library(shunt_log STATIC log/src/Tracklist.cpp)
+add_library(shunt_log STATIC log/src/Tracklist.cpp log/src/RekordboxXml.cpp)
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
 # ---- shunt_out: OSC, MIDI clock, Link logic, output manager (no JUCE, no third-party code)
@@ -92,6 +92,7 @@ add_executable(ShuntTests
   tests/test_log.cpp
   tests/test_out.cpp
   tests/test_app.cpp
+  tests/test_meta.cpp
 )
 target_include_directories(ShuntTests PRIVATE tests)
 target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log shunt_out shunt_app)

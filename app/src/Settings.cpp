@@ -44,6 +44,8 @@ Settings Settings::fromJson(const Json& j, const Settings& base) {
     if (o.has("profile")) s.outputs.osc.profile = out::oscProfileFromName(o.get("profile").asString("generic"));
     if (o.has("qlabMasterCue")) s.outputs.osc.qlabMasterCue = clampv(o.get("qlabMasterCue").asInt(1), 0, 9999);
     if (o.has("qlabTrackCue")) s.outputs.osc.qlabTrackCue = clampv(o.get("qlabTrackCue").asInt(2), 0, 9999);
+    if (o.has("inEnabled")) s.oscInEnabled = o.get("inEnabled").asBool(false);
+    if (o.has("inPort")) s.oscInPort = clampv(o.get("inPort").asInt(9100), 1, 65535);
     const Json& h = j.get("http");
     if (h.has("port")) s.httpPort = clampv(h.get("port").asInt(8080), 1, 65535);
     if (h.has("bind")) s.httpBind = h.get("bind").asString("0.0.0.0");
@@ -76,6 +78,8 @@ Json Settings::toJson() const {
     o["profile"] = out::oscProfileName(outputs.osc.profile);
     o["qlabMasterCue"] = outputs.osc.qlabMasterCue;
     o["qlabTrackCue"] = outputs.osc.qlabTrackCue;
+    o["inEnabled"] = oscInEnabled;
+    o["inPort"] = oscInPort;
     j["http"]["port"] = httpPort;
     j["http"]["bind"] = httpBind;
     return j;

@@ -16,6 +16,8 @@ struct Settings {
     std::string profile = "stage";       // stage | rehearsal
     std::string venue, performer;
     out::OutputSettings outputs;
+    bool oscInEnabled = false;
+    int oscInPort = 9100;
     int httpPort = 8080;
     std::string httpBind = "0.0.0.0";
     Json raw = Json::object();           // everything read from disk, so unknown keys survive

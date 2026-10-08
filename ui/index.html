@@ -347,6 +347,7 @@ pages.outputs={
       h('div',{class:'card'},h('h2',{},'OSC'),chk('oscEnabled','Enable OSC output',O.enabled),
         text('oscHost','Destination host',O.host),text('oscPort','Destination port',O.port,'number'),
         sel('oscProfile','Profile',[['generic','Generic /shunt'],['resolume','Resolume'],['grandma3','grandMA3'],['magicq','MagicQ'],['qlab','QLab']],O.profile),
+        chk('oscInEnabled','Accept OSC control: /shunt/baroffset i, /shunt/beatonly i',O.inEnabled),text('oscInPort','Listen on UDP port',O.inPort,'number'),
         text('qlabMaster','QLab cue on master change',O.qlabMasterCue,'number'),text('qlabTrack','QLab cue on track load',O.qlabTrackCue,'number')));
   },
   async save(){
@@ -354,7 +355,7 @@ pages.outputs={
     const patch={interface:v('interface'),mode:v('mode'),deviceNumber:+v('deviceNumber'),venue:v('venue'),performer:v('performer'),
       link:{enabled:v('linkEnabled')},
       midi:{enabled:v('midiEnabled'),port:v('midiPort'),pause:v('midiPause'),startOnFirstLock:v('startFirst'),startOnReset:v('startReset'),sppOnReset:v('spp')},
-      osc:{enabled:v('oscEnabled'),host:v('oscHost'),port:+v('oscPort'),profile:v('oscProfile'),qlabMasterCue:+v('qlabMaster'),qlabTrackCue:+v('qlabTrack')}};
+      osc:{enabled:v('oscEnabled'),host:v('oscHost'),port:+v('oscPort'),profile:v('oscProfile'),inEnabled:v('oscInEnabled'),inPort:+v('oscInPort'),qlabMasterCue:+v('qlabMaster'),qlabTrackCue:+v('qlabTrack')}};
     try{await api('/api/config',patch);this.msg.className='msg ok';this.msg.textContent='Saved and applied.'}
     catch(e){this.msg.className='msg err';this.msg.textContent=e.message}
   },
@@ -364,14 +365,20 @@ pages.outputs={
 /* ---------- tracklist ---------- */
 pages.tracklist={
   mount(root){
-    this.body=h('tbody');this.rows=-1;
+    this.body=h('tbody');this.rows=-1;this.imp=h('div',{class:'msg','aria-live':'polite'});
     root.append(h('div',{class:'card'},h('h2',{},'Tracklist'),
       h('div',{style:'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px'},
         h('button',{class:'btn',onclick:()=>api('/api/setstart')},'Set start marker now'),
         [['csv','CSV'],['cue','CUE'],['txt','Timestamps'],['ndjson','NDJSON'],['report','Report CSV']].map(([f,t])=>h('a',{class:'btn',style:'text-decoration:none',href:'/api/export?format='+f,download:''},t)),
+        h('label',{class:'btn',style:'cursor:pointer'},'Import rekordbox XML',h('input',{type:'file',accept:'.xml,text/xml',class:'sr',onchange:async e=>{
+          const f=e.target.files[0];if(!f)return;this.imp.className='msg';this.imp.textContent='Importing '+f.name+'…';
+          try{const r=await fetch('/api/rekordbox-xml',{method:'POST',body:await f.text()});const j=await r.json();if(!r.ok)throw new Error(j.error);
+            this.imp.className='msg ok';this.imp.textContent='Matched metadata for '+j.tracks+' tracks in the file.';this.rows=-1}
+          catch(x){this.imp.className='msg err';this.imp.textContent=x.message}e.target.value=''}})),
         h('button',{class:'btn',style:'margin-left:auto',onclick:async()=>{if(confirm('Start a new session? The current rows stay in the saved NDJSON file.')){await api('/api/session/clear',{});this.rows=-1}}},'New session')),
+      this.imp,
       h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},['#','Start','End','Deck','Track','Slot','Played'].map(t=>h('th',{},t)))),this.body)),
-      h('p',{class:'note'},'Rows are metadata-free (rekordbox id) until a rekordbox XML export is matched. A track counts as played after 30 s or 20 percent on air.')));
+      h('p',{class:'note'},'Rows show the rekordbox id until you import a rekordbox XML export (File → Export Collection in xml format); names then fill in everywhere, including exports. A track counts as played after 30 s or 20 percent on air.')));
   },
   update(s){
     if(s.tracks===this.rows)return;this.rows=s.tracks;

@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <sys/stat.h>
+#include <fstream>
+#include <sstream>
 #include <unistd.h>
 
 namespace shunt::app {
@@ -86,6 +88,8 @@ bool Core::start(std::string* error) {
     if (running_.exchange(true)) return true;
     mkdirs(dataDir_ + "/tracklists");
     mkdirs(dataDir_ + "/captures");
+    loadMeta();
+    syncOscInput();
     buildStack();
     if (!stackUp_ && error) *error = stackError_;
     outputs_.start();
@@ -148,6 +152,11 @@ void Core::netLoop() {
         { std::lock_guard<std::mutex> lk(mu_); st = stack_.get(); }
         if (!st) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); continue; }
         st->poll(5);                       // only this thread touches the stack while it exists
+        oscIn_.poll([this](const out::OscMessage& m) {
+            if (m.args.empty() || m.args[0].type != 'i') return;
+            if (m.address == "/shunt/baroffset") setBarOffset(m.args[0].i);
+            else if (m.address == "/shunt/beatonly") setBeatOnly(m.args[0].i != 0);
+        });
         const int64_t now = net::monotonicNowNs();
         const int64_t wall = wallNowMs();
         std::lock_guard<std::mutex> lk(mu_);
@@ -306,6 +315,7 @@ bool Core::applyConfig(const Json& patch, std::string& error) {
         outputs_.configure(settings_.outputs);
         if (!settings_.save(configPath_, &error)) return false;
     }
+    syncOscInput();
     if (restart) restart_ = true;
     return true;
 }
@@ -421,7 +431,7 @@ Json Core::status() {
     for (int i = 0; i < 256; ++i) if (counters_.perType[i]) { char k[8]; std::snprintf(k, sizeof k, "0x%02x", i); types[k] = counters_.perType[i]; }
     c["perType"] = types;
     j["counters"] = c;
-    j["tracks"] = int(session_.rows().size());
+    j["tracks"] = int(session_.rows().size() + session_.events().size());   // change token for the UI
     j["events"] = int(session_.events().size());
     return j;
 }
@@ -429,7 +439,11 @@ Json Core::status() {
 Json Core::tracklist() {
     std::lock_guard<std::mutex> lk(mu_);
     Json rows = Json::array();
-    for (auto& r : session_.rows()) {
+    log::TracklistSession live = session_;       // include tracks still playing, without touching the real session
+    live.finish(wallNowMs());
+    std::vector<log::Row> viewRows = live.rows();
+    log::applyMeta(viewRows, meta_);
+    for (auto& r : viewRows) {
         Json o = Json::object();
         o["startedAt"] = r.startedAtMs; o["endedAt"] = r.endedAtMs; o["deck"] = int(r.deck); o["slot"] = int(r.slot);
         o["rekordboxId"] = int64_t(r.rekordboxId); o["title"] = r.title; o["artist"] = r.artist;
@@ -457,15 +471,17 @@ bool Core::exportTracklist(const std::string& format, std::string& body, std::st
     // Include the rows still in progress without disturbing the live session.
     log::TracklistSession copy = session_;
     copy.finish(now);
-    const int64_t setStart = setStartMs_ ? setStartMs_ : (copy.rows().empty() ? now : copy.rows().front().startedAtMs);
+    std::vector<log::Row> rows = copy.rows();
+    log::applyMeta(rows, meta_);
+    const int64_t setStart = setStartMs_ ? setStartMs_ : (rows.empty() ? now : rows.front().startedAtMs);
     const std::string base = "shunt-tracklist-" + stamp(now);
-    if (format == "csv") { body = log::toCsv(copy.rows()); type = "text/csv"; filename = base + ".csv"; }
-    else if (format == "cue") { body = log::toCue(copy.rows(), setStart, settings_.performer, settings_.venue.empty() ? "Shunt set" : settings_.venue); type = "application/x-cue"; filename = base + ".cue"; }
-    else if (format == "txt") { body = log::toTimestampText(copy.rows(), setStart); type = "text/plain"; filename = base + ".txt"; }
-    else if (format == "ndjson") { body = log::toNdjson(copy.events(), copy.rows()); type = "application/x-ndjson"; filename = base + ".ndjson"; }
+    if (format == "csv") { body = log::toCsv(rows); type = "text/csv"; filename = base + ".csv"; }
+    else if (format == "cue") { body = log::toCue(rows, setStart, settings_.performer, settings_.venue.empty() ? "Shunt set" : settings_.venue); type = "application/x-cue"; filename = base + ".cue"; }
+    else if (format == "txt") { body = log::toTimestampText(rows, setStart); type = "text/plain"; filename = base + ".txt"; }
+    else if (format == "ndjson") { body = log::toNdjson(copy.events(), rows); type = "application/x-ndjson"; filename = base + ".ndjson"; }
     else if (format == "report") {
         char d[16]; time_t t = time_t(now / 1000); tm tmv{}; gmtime_r(&t, &tmv); std::strftime(d, sizeof d, "%Y-%m-%d", &tmv);
-        body = log::toPerformanceReportCsv(copy.rows(), d, settings_.venue); type = "text/csv"; filename = base + "-report.csv";
+        body = log::toPerformanceReportCsv(rows, d, settings_.venue); type = "text/csv"; filename = base + "-report.csv";
     } else return false;
     return true;
 }
@@ -490,6 +506,55 @@ Json Core::compat() {
     Json a = Json::array();
     for (auto& r : rows) { Json o = Json::object(); o["model"] = r.model; o["badge"] = r.badge; o["note"] = r.note; a.push(o); }
     return a;
+}
+
+} // namespace shunt::app
+
+namespace shunt::app {
+
+int Core::importRekordboxXml(const std::string& xml) {
+    log::MetaMap m = log::parseRekordboxXml(xml);
+    if (m.empty()) return -1;
+    const int n = int(m.size());
+    Json arr = Json::array();
+    for (auto& kv : m) {
+        Json o = Json::object();
+        o["id"] = int64_t(kv.first); o["title"] = kv.second.title; o["artist"] = kv.second.artist; o["album"] = kv.second.album;
+        o["genre"] = kv.second.genre; o["key"] = kv.second.key; o["bpm"] = kv.second.bpm; o["durationS"] = kv.second.durationS;
+        arr.push(o);
+    }
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        meta_ = std::move(m);
+    }
+    std::ofstream f(dataDir_ + "/rekordbox-meta.json", std::ios::trunc);
+    if (f) f << arr.dump();
+    return n;
+}
+
+void Core::loadMeta() {
+    std::ifstream f(dataDir_ + "/rekordbox-meta.json");
+    if (!f) return;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    Json j;
+    if (!Json::parse(ss.str(), j) || !j.isArray()) return;
+    for (auto& o : j.items()) {
+        log::TrackMeta t;
+        t.title = o.get("title").asString(""); t.artist = o.get("artist").asString(""); t.album = o.get("album").asString("");
+        t.genre = o.get("genre").asString(""); t.key = o.get("key").asString("");
+        t.bpm = o.get("bpm").asNumber(); t.durationS = o.get("durationS").asNumber();
+        meta_[uint32_t(o.get("id").asNumber())] = t;
+    }
+}
+
+void Core::syncOscInput() {
+    bool want; int port;
+    { std::lock_guard<std::mutex> lk(mu_); want = settings_.oscInEnabled; port = settings_.oscInPort; }
+    if (!want) { oscIn_.close(); oscInPortOpen_ = 0; return; }
+    if (oscIn_.isOpen() && oscInPortOpen_ == port) return;
+    std::string err;
+    oscInPortOpen_ = oscIn_.open(uint16_t(port), err) ? port : 0;
 }
 
 } // namespace shunt::app

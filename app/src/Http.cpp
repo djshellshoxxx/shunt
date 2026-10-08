@@ -119,6 +119,7 @@ struct HttpServer::Client {
 };
 
 namespace {
+constexpr size_t kMaxBody = 64u << 20;
 const char* statusText(int s) {
     switch (s) {
     case 200: return "OK";
@@ -230,7 +231,7 @@ void HttpServer::run() {
                 char buf[8192];
                 for (;;) {
                     ssize_t r = ::recv(c.fd, buf, sizeof buf, 0);
-                    if (r > 0) { c.in.append(buf, size_t(r)); c.last = time(nullptr); if (c.in.size() > (2u << 20)) { dead = true; break; } }
+                    if (r > 0) { c.in.append(buf, size_t(r)); c.last = time(nullptr); if (c.in.size() > kMaxBody + 32768) { dead = true; break; } }
                     else if (r == 0) { dead = true; break; }
                     else break;
                 }
@@ -277,7 +278,7 @@ void HttpServer::run() {
                         }
                         size_t clen = 0;
                         if (req.headers.count("content-length")) clen = size_t(std::strtoul(req.headers["content-length"].c_str(), nullptr, 10));
-                        if (clen > (1u << 20)) {
+                        if (clen > kMaxBody) {
                             c.out += "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                             c.closing = true;
                         } else if (c.in.size() >= hend + 4 + clen) {

@@ -9,8 +9,8 @@ current; tick boxes as work lands.
 - [x] Engineering specs ES-01 to ES-04; regular specs RS-01 to RS-06
 - [x] CMake skeleton: `shunt_net`, `shunt_clock`, `shunt_log` (plain C++17, no JUCE), `ShuntTests` (self-contained test header instead of Catch2), `shuntsim`
 - [x] CI: Linux build and unit tests on every PR (`ci.yml`)
-- [ ] CI: aarch64 cross job
-- [ ] Legal wording file (`LEGAL.md`) with the ES-04 section 6 text
+- [x] CI: aarch64 cross build job (build only; no emulated test run)
+- [x] Legal wording file (`LEGAL.md`) with the ES-04 section 6 text
 - [ ] Ableton Link licence request (joint with Pacemaker)
 - [ ] Obtain the two dysentery captures into `Tests/captures/` with a manifest
 
@@ -43,11 +43,12 @@ current; tick boxes as work lands.
 - [x] First-run interface and mode picker with firewall guidance
 - [ ] Windows installer firewall rule
 - [x] Tracklist logger, exporters, NDJSON persistence and `/overlay` page
-- [ ] rekordbox XML import for titles and artists
+- [x] rekordbox XML import for titles and artists (RS-07 section 11)
 - [x] Compatibility page; diagnostics page; record toggle
 - [ ] Replay-a-capture UI
 - [x] Bar offset memory
-- [ ] MIDI learn, OSC input
+- [x] OSC input (`/shunt/baroffset`, `/shunt/beatonly`)
+- [ ] MIDI learn
 - [ ] Release workflow: Windows, Linux x64 and aarch64, macOS universal; notarisation on tags
 
 ## Phase 4: Beta and v1.0 (3 weeks)

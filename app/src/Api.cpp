@@ -63,6 +63,14 @@ HttpResponse handleRequest(Core& core, const HttpRequest& req) {
         return error(404, "not found");
     }
 
+    if (p == "/api/rekordbox-xml") {
+        const int n = core.importRekordboxXml(req.body);
+        if (n < 0) return error(400, "no tracks with TrackID and Name found: is this a rekordbox XML export?");
+        Json j = Json::object();
+        j["ok"] = true;
+        j["tracks"] = n;
+        return json(j);
+    }
     Json body;
     if (!req.body.empty()) {
         std::string err;

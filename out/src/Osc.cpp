@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <cmath>
 #include <cstring>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -28,6 +30,72 @@ std::vector<uint8_t> oscMessage(const std::string& address, const std::vector<Os
         else putStr(v, a.s);
     }
     return v;
+}
+
+bool oscParse(const uint8_t* d, size_t n, OscMessage& out) {
+    auto str = [&](size_t& p, std::string& o) {
+        size_t e = p;
+        while (e < n && d[e]) ++e;
+        if (e >= n) return false;
+        o.assign(reinterpret_cast<const char*>(d + p), e - p);
+        p = (e + 4) & ~size_t(3);      // string plus terminator padded to 4
+        return p <= n;
+    };
+    size_t p = 0;
+    std::string tags;
+    if (n < 4 || d[0] != '/') return false;
+    if (!str(p, out.address) || !str(p, tags) || tags.empty() || tags[0] != ',') return false;
+    out.args.clear();
+    for (size_t i = 1; i < tags.size(); ++i) {
+        switch (tags[i]) {
+        case 'i': {
+            if (p + 4 > n) return false;
+            out.args.push_back(OscArg::Int(int32_t((uint32_t(d[p]) << 24) | (uint32_t(d[p + 1]) << 16) | (uint32_t(d[p + 2]) << 8) | d[p + 3])));
+            p += 4;
+            break;
+        }
+        case 'f': {
+            if (p + 4 > n) return false;
+            const uint32_t u = (uint32_t(d[p]) << 24) | (uint32_t(d[p + 1]) << 16) | (uint32_t(d[p + 2]) << 8) | d[p + 3];
+            float f; std::memcpy(&f, &u, 4);
+            out.args.push_back(OscArg::Float(f));
+            p += 4;
+            break;
+        }
+        case 's': { std::string v; if (!str(p, v)) return false; out.args.push_back(OscArg::Str(v)); break; }
+        case 'T': out.args.push_back(OscArg::Int(1)); break;
+        case 'F': out.args.push_back(OscArg::Int(0)); break;
+        default: return false;
+        }
+    }
+    return true;
+}
+
+OscInput::~OscInput() { close(); }
+void OscInput::close() { if (fd_ >= 0) { ::close(fd_); fd_ = -1; } }
+
+bool OscInput::open(uint16_t port, std::string& error) {
+    close();
+    fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd_ < 0) { error = "socket failed"; return false; }
+    int on = 1;
+    ::setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on);
+    sockaddr_in a{};
+    a.sin_family = AF_INET; a.sin_port = htons(port); a.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (::bind(fd_, reinterpret_cast<sockaddr*>(&a), sizeof a) < 0) { error = "cannot bind UDP " + std::to_string(port); close(); return false; }
+    ::fcntl(fd_, F_SETFL, ::fcntl(fd_, F_GETFL, 0) | O_NONBLOCK);
+    return true;
+}
+
+void OscInput::poll(const std::function<void(const OscMessage&)>& fn) {
+    if (fd_ < 0) return;
+    uint8_t buf[1500];
+    for (int i = 0; i < 32; ++i) {
+        const ssize_t r = ::recv(fd_, buf, sizeof buf, 0);
+        if (r <= 0) break;
+        OscMessage m;
+        if (oscParse(buf, size_t(r), m)) fn(m);
+    }
 }
 
 const char* oscProfileName(OscProfile p) {

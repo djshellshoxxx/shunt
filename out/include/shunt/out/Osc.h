@@ -20,6 +20,26 @@ struct OscArg {
 
 std::vector<uint8_t> oscMessage(const std::string& address, const std::vector<OscArg>& args);
 
+struct OscMessage {
+    std::string address;
+    std::vector<OscArg> args;
+};
+// Decodes one OSC message (i, f, s, T, F arguments). Bundles and malformed data return false.
+bool oscParse(const uint8_t* data, size_t len, OscMessage& out);
+
+// Non-blocking UDP listener for remote control (RS-07 addendum).
+class OscInput {
+public:
+    ~OscInput();
+    bool open(uint16_t port, std::string& error);
+    void close();
+    bool isOpen() const { return fd_ >= 0; }
+    // Reads every pending datagram and calls fn for each valid message.
+    void poll(const std::function<void(const OscMessage&)>& fn);
+private:
+    int fd_ = -1;
+};
+
 enum class OscProfile : uint8_t { Generic, Resolume, GrandMA3, MagicQ, QLab };
 const char* oscProfileName(OscProfile p);
 OscProfile oscProfileFromName(const std::string& s);

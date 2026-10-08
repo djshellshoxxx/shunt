@@ -214,6 +214,26 @@ animation.
 - A-T4 Core end to end on loopback with `shuntsim` is covered by the existing
   `shuntsim_localhost` style test for `/api/status` (bpm near 130).
 
+## 11. Addendum: metadata import and OSC input
+
+**rekordbox XML import** (RS-04 metadata step 2). `parseRekordboxXml(text)`
+scans `<TRACK ...>` elements that carry both `TrackID` and `Name`
+(playlist references only have `Key`), decodes XML entities, and returns
+`id -> {title, artist, album, genre, key (Tonality), bpm (AverageBpm),
+durationS (TotalTime)}`. Metadata is resolved at read time (tracklist view,
+overlay, exports), so importing after the set fills in every row. Matched
+rows get `source = "rekordbox-xml"`. The map is stored in
+`<data>/rekordbox-meta.json` and reloaded at start. `POST /api/rekordbox-xml`
+takes the raw XML (limit 64 MB) and returns `{ok, tracks}`. The Tracklist page
+has an import button. Ids that are not in the file stay "ID".
+
+**OSC input** (RS-03). Optional UDP listener (`osc.inEnabled`, `osc.inPort`,
+default 9100). Messages: `/shunt/baroffset i` (0..3), `/shunt/beatonly i`
+(0 or 1). Malformed packets are ignored. Bundles are not supported.
+
+Tests: O-T7 OSC decode round trip and malformed input; L-T1 XML parse with
+entities and playlist references; L-T2 metadata applied to rows and exports.
+
 ## Decision record
 
 **Web UI instead of a JUCE-only GUI for the first release.** One UI serves

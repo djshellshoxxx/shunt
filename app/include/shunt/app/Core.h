@@ -3,6 +3,7 @@
 #include "shunt/app/Json.h"
 #include "shunt/app/Settings.h"
 #include "shunt/clock/ClockEngine.h"
+#include "shunt/log/RekordboxXml.h"
 #include "shunt/log/Tracklist.h"
 #include "shunt/net/NetworkStack.h"
 #include "shunt/out/OutputManager.h"
@@ -39,6 +40,8 @@ public:
     void markSetStart();
     void clearSession();
     void setRecording(bool on);
+    // Imports a rekordbox XML export; returns the number of tracks with metadata, or -1 when none were found.
+    int importRekordboxXml(const std::string& xml);
 
     const Settings& settings() const { return settings_; }
 
@@ -81,6 +84,11 @@ private:
     uint8_t masterTrackSlot_ = 0;
     size_t writtenEvents_ = 0, writtenRows_ = 0;
     std::string sessionFile_;
+    log::MetaMap meta_;
+    out::OscInput oscIn_;
+    int oscInPortOpen_ = 0;
+    void loadMeta();
+    void syncOscInput();
     std::atomic<bool> running_{false}, restart_{false};
     std::thread thread_;
 };
