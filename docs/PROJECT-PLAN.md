@@ -28,19 +28,26 @@ current; tick boxes as work lands.
 ## Phase 2: Clock engine and outputs (2 to 3 weeks)
 
 - [x] Estimator, reset rules, bar phase, state machine (ES-03); tests C-T1 to C-T10
-- [ ] Extract `clockout` from Pacemaker and adapt (RS-01)
-- [ ] Link output with quantum 4/1 and soft/hard phase policy
-- [ ] MIDI clock output with pause behaviour options and virtual port
-- [ ] OSC output with Shunt messages and profiles
-- [ ] Latency offset and phase scope data
+- [x] `shunt_out` library written fresh against RS-07 (no Pacemaker code needed; tests O-T1 to O-T6)
+- [x] Link output logic with quantum 4/1 and soft/hard phase policy over `ILinkSession` (mock-tested)
+- [ ] Link SDK binding built and tested with `-DSHUNT_WITH_LINK=ON` (needs licence and SDK)
+- [x] MIDI clock output with pause behaviour options (raw ALSA/serial ports)
+- [ ] Virtual MIDI ports (CoreMIDI, WinMM/teVirtualMIDI, ALSA seq) in the JUCE shell
+- [x] OSC output with Shunt messages and profiles
+- [x] Latency offset and phase scope data
 
 ## Phase 3: Desktop app (3 to 4 weeks)
 
-- [ ] JUCE app shell: tray, main screen per ES-04 section 5, stage mode
-- [ ] First-run interface and mode picker; firewall guidance; installer rule on Windows
-- [ ] Tracklist logger and exporters (RS-04); overlay page
-- [ ] Compatibility page; diagnostics page; record and replay UI
-- [ ] Bar offset memory, MIDI learn, OSC input
+- [x] Main screen per ES-04 section 5 and stage mode as an embedded web UI (RS-07 section 9)
+- [ ] JUCE shell: tray, auto-start, WebView, native MIDI ports
+- [x] First-run interface and mode picker with firewall guidance
+- [ ] Windows installer firewall rule
+- [x] Tracklist logger, exporters, NDJSON persistence and `/overlay` page
+- [ ] rekordbox XML import for titles and artists
+- [x] Compatibility page; diagnostics page; record toggle
+- [ ] Replay-a-capture UI
+- [x] Bar offset memory
+- [ ] MIDI learn, OSC input
 - [ ] Release workflow: Windows, Linux x64 and aarch64, macOS universal; notarisation on tags
 
 ## Phase 4: Beta and v1.0 (3 weeks)
@@ -54,7 +61,7 @@ current; tick boxes as work lands.
 
 ## Phase 5: Shunt Box (3 to 5 weeks)
 
-- [ ] `shunt_headless` with civetweb web UI and WebSocket status (RS-02)
+- [x] `shunt_headless` with built-in HTTP/WebSocket server and web UI (RS-02, RS-07; no civetweb needed)
 - [ ] Pi OS image: overlayfs, `/data`, systemd watchdog, NetworkManager profiles, avahi
 - [ ] UART DIN MIDI and USB gadget mode; OLED; WS2812; button
 - [ ] Image build in CI; signed update bundles
