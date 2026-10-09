@@ -42,6 +42,7 @@ press `S` for stage mode. `/overlay` is an OBS browser source.
 - `docs/specs/RS-*.md` — regular specs: outputs, appliance, desktop app and
   UX, tracklist logging, testing and CI, licensing and legal
 - `docs/specs/RS-07-outputs-core-and-web-ui.md` — outputs, core runtime, HTTP API, web UI
+- `docs/specs/FS-*.md` — feature specs FS-00 (extension points) to FS-09, with test and fixture rules; build order and merge rules in `docs/BUILD-PLAN-FEATURES.md`
 - `docs/DIFFERENTIATION.md` — what makes Shunt different, ranked extra
   features
 - `docs/PROJECT-PLAN.md` — phases, checklist, risks

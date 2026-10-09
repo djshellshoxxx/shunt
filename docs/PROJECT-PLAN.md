@@ -80,6 +80,19 @@ current; tick boxes as work lands.
 - [ ] TCNet-compatible output after legal review
 - [ ] LTC and MTC
 
+## Feature wave (specs FS-00 to FS-09, plan in `docs/BUILD-PLAN-FEATURES.md`)
+
+- [ ] PR 0: extension points (FS-00) and PR T0: CI sanitizers, simulator scenarios, fixtures (FS-TEST)
+- [ ] FS-01 On-air routing and clock mute
+- [ ] FS-02 Key clash alarm
+- [ ] FS-03 Phrase countdown (after spike P0)
+- [ ] FS-04 MIDI learn
+- [ ] FS-05 Replay a capture
+- [ ] FS-06 Downbeat tap, nudge and confidence breakdown
+- [ ] FS-07 Venue profiles
+- [ ] FS-08 Set report
+- [ ] FS-09 DIN sync and CV clock on the Box
+
 ## Risks and mitigations
 
 | Risk | Impact | Mitigation |
