@@ -1,58 +1,62 @@
-cmake_minimum_required(VERSION 3.16)
-project(Shunt VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.22)
+project(Shunt VERSION 0.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_compile_options(-Wall -Wextra)
+option(SHUNT_BUILD_APPS "Build the JUCE desktop app and shunt_headless" ON)
+option(SHUNT_WITH_LINK "Build the Ableton Link output (GPLv2+ unless a proprietary Link licence is held)" ON)
+option(SHUNT_BUILD_TESTS "Build unit tests" ON)
+option(SHUNT_REQUIRE_LICENCE "Release builds: run as Shunt Monitor (no outputs) without a valid key file" OFF)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-# ---- shunt_net: packets, device table, claim machine, master tracker, pcapng, sockets
-add_library(shunt_net STATIC
-  net/src/Packets.cpp
-  net/src/DeviceTable.cpp
-  net/src/ClaimMachine.cpp
-  net/src/MasterTracker.cpp
-  net/src/Pcapng.cpp
-  net/src/NetworkStack.cpp
-  net/src/PosixSocket.cpp
-)
-target_include_directories(shunt_net PUBLIC net/include)
-target_link_libraries(shunt_net PUBLIC Threads::Threads)
+if(MSVC)
+  add_compile_options(/W3 /utf-8 /permissive- /Zc:__cplusplus)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+else()
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
+endif()
+if(WIN32)
+  add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00)
+endif()
+if(MINGW)
+  include_directories(BEFORE SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mingw-shim)
+  add_link_options(-static -static-libgcc -static-libstdc++)
+endif()
 
-# ---- shunt_clock: estimator, timeline, state machine (no sockets)
-add_library(shunt_clock STATIC clock/src/ClockEngine.cpp)
-target_include_directories(shunt_clock PUBLIC clock/include net/include)
+include(cmake/Dependencies.cmake)
 
-# ---- shunt_log: tracklist events and exporters
-add_library(shunt_log STATIC log/src/Tracklist.cpp)
-target_include_directories(shunt_log PUBLIC log/include net/include)
+# Version header shared by every target
+configure_file(cmake/Version.h.in ${CMAKE_BINARY_DIR}/generated/shunt/Version.h @ONLY)
+add_library(shunt_version INTERFACE)
+target_include_directories(shunt_version INTERFACE ${CMAKE_BINARY_DIR}/generated)
+
+# ---- core libraries (plain C++17, no JUCE)
+add_subdirectory(net)      # shunt_net: packets, devices, claim, master, pcapng, sockets
+add_subdirectory(clock)    # shunt_clock: estimator, timeline, state machine
+add_subdirectory(log)      # shunt_log: tracklist events, exporters, session files
+add_subdirectory(out)      # shunt_out: Link, MIDI clock, OSC (the "clockout" library)
+add_subdirectory(meta)     # shunt_meta: dbserver client, rekordbox XML
+add_subdirectory(core)     # shunt_core: engine, settings, web server, licence
 
 # ---- tools
-add_executable(shuntsim tools/shuntsim/main.cpp)
-target_link_libraries(shuntsim PRIVATE shunt_net)
+add_subdirectory(tools)
 
-add_executable(shunt_cli tools/shunt_cli/main.cpp)
-target_link_libraries(shunt_cli PRIVATE shunt_net shunt_clock shunt_log)
+# ---- applications (JUCE)
+if(SHUNT_BUILD_APPS)
+  add_subdirectory(${SHUNT_JUCE_DIR} juce EXCLUDE_FROM_ALL)
+  add_subdirectory(app)
+endif()
 
 # ---- tests
-enable_testing()
-add_executable(ShuntTests
-  tests/main.cpp
-  tests/test_packets.cpp
-  tests/test_net.cpp
-  tests/test_clock.cpp
-  tests/test_log.cpp
-)
-target_include_directories(ShuntTests PRIVATE tests)
-target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log)
-add_test(NAME ShuntTests COMMAND ShuntTests)
-add_test(NAME shuntsim_localhost
-  COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
-set_tests_properties(shuntsim_localhost PROPERTIES TIMEOUT 60)
+if(SHUNT_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
