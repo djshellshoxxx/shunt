@@ -37,6 +37,10 @@ public:
                  uint32_t rekordboxId, Callback cb);
     // For tests: override the discovery port (default 12523).
     void setDiscoveryPort(uint16_t port);
+    // Socket timeout per connect/read/write step (default 10000 ms, RS-04).
+    void setTimeoutMs(int ms);
+    // Joins the worker; queued requests complete with ok = false. A later
+    // request() starts a new worker.
     void stop();
 
 private:
@@ -45,6 +49,8 @@ private:
 };
 
 // Path 2: the user's rekordbox XML export (COLLECTION/TRACK), matched by id.
+// load() streams the file in chunks and replaces the previous contents. On a
+// truncated or malformed file it returns false but keeps the tracks parsed so far.
 class RekordboxXml {
 public:
     bool load(const std::string& path, std::string* error = nullptr);
