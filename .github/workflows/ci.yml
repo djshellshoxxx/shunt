@@ -5,16 +5,77 @@ on:
     branches: ["**"]
   pull_request:
 
+env:
+  JUCE_LINUX_DEPS: >-
+    ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev
+    libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev
+    libxrender-dev libgl1-mesa-dev
+
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y $JUCE_LINUX_DEPS
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build
+      - name: Test (unit, replay, ShuntSim on localhost)
+        run: ctest --test-dir build --output-on-failure
+
+  # RS-05: aarch64 build and tests (Raspberry Pi target), on a native arm64 runner.
+  linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y $JUCE_LINUX_DEPS
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  windows-msvc:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  windows-mingw-cross:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y ninja-build mingw-w64 nsis wine64 python3-pil zip $JUCE_LINUX_DEPS
+      - name: Build, test under Wine, package
+        run: scripts/build-windows.sh build-win dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shunt-windows-x64-mingw
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+            dist/*.sha256
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+      - name: Build
+        run: cmake --build build --config Release -- -quiet
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure -E shuntsim_localhost
