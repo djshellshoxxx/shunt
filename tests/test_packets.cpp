@@ -400,3 +400,20 @@ TEST_CASE("pitch encode/decode") {
     CHECK_NEAR(decodePitch(encodePitch(0.9375)), 0.9375, 1e-6);
     CHECK_NEAR(decodePitch(0xff100000), 1.0, 1e-12);   // top byte ignored
 }
+
+// Robustness: random and truncated packets must never crash or read out of bounds (run under ASan in audits).
+TEST_CASE("P-T5 parsers survive truncated and random input") {
+    static const uint8_t kMagic[10] = {0x51, 0x73, 0x70, 0x74, 0x31, 0x57, 0x6d, 0x4a, 0x4f, 0x4c};
+    uint32_t seed = 12345;
+    auto rnd = [&seed] { seed = seed * 1664525u + 1013904223u; return uint8_t(seed >> 24); };
+    const uint16_t ports[] = {50000, 50001, 50002};
+    for (int iter = 0; iter < 20000; ++iter) {
+        uint8_t buf[512];
+        for (auto& b : buf) b = rnd();
+        if (iter & 1) std::memcpy(buf, kMagic, sizeof kMagic);
+        if (iter % 3 == 0) buf[0x0a] = uint8_t("\x06\x0a\x00\x02\x04\x08\x28\x0b\x03\x26\x27\x2a\x29"[rnd() % 13]);
+        const size_t len = rnd() | (size_t(rnd() & 1) << 8);
+        for (auto p : ports) (void)shunt::net::parseForPort(p, buf, len, 0);
+    }
+    CHECK(true);
+}

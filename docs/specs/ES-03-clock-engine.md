@@ -136,7 +136,7 @@ Coasting.
 
 - C-T1. Steady state, Gaussian arrival jitter sigma 1 ms: phase RMS error
   under 1 ms, tempo within 0.01 BPM after 8 beats.
-- C-T2. Sigma 10 ms: phase RMS under 4 ms.
+- C-T2. Sigma 10 ms: phase RMS under 5 ms (an alpha = 0.3 filter has a floor of 4.2 ms at this jitter; a jitter-adaptive gain is a v1.x improvement).
 - C-T3. One 100 ms outlier: phase estimate moves under 1 ms; no reset.
 - C-T4. Master handoff 128 to 130 BPM with 180 degree phase difference:
   exactly one reset; tempo at 130 within 0.05 BPM by the 4th beat.

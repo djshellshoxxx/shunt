@@ -28,10 +28,10 @@ current; tick boxes as work lands.
 ## Phase 2: Clock engine and outputs (2 to 3 weeks)
 
 - [x] Estimator, reset rules, bar phase, state machine (ES-03); tests C-T1 to C-T10
-- [ ] Extract `clockout` from Pacemaker and adapt (RS-01)
-- [ ] Link output with quantum 4/1 and soft/hard phase policy
-- [ ] MIDI clock output with pause behaviour options and virtual port
-- [ ] OSC output with Shunt messages and profiles
+- [x] Output engine `shunt_out` written to ES-05 (self-contained; Pacemaker extraction no longer needed)
+- [x] Link adapter with quantum 4/1 and soft/hard phase policy (`ILinkBackend`; real SDK backend pending licence); tests O-T11 to O-T13
+- [x] MIDI clock generator with pause/start/SPP options (O-T1 to O-T6); [ ] platform sinks (CoreMIDI, ALSA, WinMM, virtual port)
+- [x] OSC encoder, output and profiles (O-T7 to O-T10); [ ] OSC input
 - [ ] Latency offset and phase scope data
 
 ## Phase 3: Desktop app (3 to 4 weeks)

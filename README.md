@@ -14,7 +14,7 @@ appliance ("Shunt Box"). C++17, JUCE 8, CMake, same toolchain as
 [Vivisect](https://github.com/djshellshoxxx/faultline) and
 [Pacemaker](https://github.com/djshellshoxxx/pacemaker).
 
-Status: specification stage.
+Status: protocol core, clock engine and output engine implemented; platform sinks and apps next.
 
 ## Documents
 
@@ -24,6 +24,7 @@ Status: specification stage.
 - `docs/specs/ES-02-packet-formats.md` — packet engineering spec
 - `docs/specs/ES-03-clock-engine.md` — timing engineering spec
 - `docs/specs/ES-04-product.md` — product engineering spec
+- `docs/specs/ES-05-outputs.md` — output engine (MIDI clock, OSC, Link adapter)
 - `docs/specs/RS-*.md` — regular specs: outputs, appliance, desktop app and
   UX, tracklist logging, testing and CI, licensing and legal
 - `docs/DIFFERENTIATION.md` — what makes Shunt different, ranked extra

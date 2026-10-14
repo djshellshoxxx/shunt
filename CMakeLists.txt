@@ -34,6 +34,11 @@ target_include_directories(shunt_clock PUBLIC clock/include net/include)
 add_library(shunt_log STATIC log/src/Tracklist.cpp)
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
+# ---- shunt_out: MIDI clock, OSC, Link adapter (no drivers; sinks injected)
+add_library(shunt_out STATIC out/src/MidiClock.cpp out/src/Osc.cpp out/src/LinkOutput.cpp)
+target_include_directories(shunt_out PUBLIC out/include)
+target_link_libraries(shunt_out PUBLIC shunt_clock shunt_net)
+
 # ---- tools
 add_executable(shuntsim tools/shuntsim/main.cpp)
 target_link_libraries(shuntsim PRIVATE shunt_net)
@@ -49,9 +54,10 @@ add_executable(ShuntTests
   tests/test_net.cpp
   tests/test_clock.cpp
   tests/test_log.cpp
+  tests/test_out.cpp
 )
 target_include_directories(ShuntTests PRIVATE tests)
-target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log)
+target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log shunt_out)
 add_test(NAME ShuntTests COMMAND ShuntTests)
 add_test(NAME shuntsim_localhost
   COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
