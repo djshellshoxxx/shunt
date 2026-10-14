@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Shunt</title>
+<style>
+:root{
+  --bg:#07090c; --bg2:#0d1117; --card:#111720; --card2:#161e29; --line:#243040; --line2:#2f3d52;
+  --text:#e8eef6; --dim:#93a1b5; --faint:#5d6b80;
+  --accent:#2ee6c4; --accent2:#4aa3ff; --warn:#ffb020; --bad:#ff5470; --good:#3ddc84; --master:#ffd24a;
+  --radius:14px; --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 var(--font);-webkit-font-smoothing:antialiased}
+body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#10202a 0,transparent 70%),var(--bg)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+.sr{position:absolute;left:-9999px}
+header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:16px;padding:10px 20px;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.14em;font-size:15px}
+.logo svg{width:28px;height:28px}
+nav{display:flex;gap:4px;overflow-x:auto;flex:1;scrollbar-width:none}
+nav a{padding:8px 14px;border-radius:10px;color:var(--dim);text-decoration:none;white-space:nowrap;font-weight:500}
+nav a:hover{color:var(--text);background:var(--card)}
+nav a[aria-current=page]{color:var(--bg);background:var(--accent)}
+.conn{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:14px;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--faint);display:inline-block;flex:none}
+.dot.on{background:var(--good);box-shadow:0 0 10px var(--good)}
+.dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+main{max-width:1500px;margin:0 auto;padding:20px}
+.banner{display:none;margin-bottom:16px;padding:12px 16px;border-radius:12px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))}
+.banner.show{display:block}
+.banner.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,var(--card))}
+.banner button{margin-left:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card h2{margin:0 0 12px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.btn{background:var(--card2);border:1px solid var(--line2);border-radius:10px;padding:8px 14px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:#04120f;border-color:var(--accent);font-weight:650}
+.btn.on{background:color-mix(in srgb,var(--accent) 18%,var(--card2));border-color:var(--accent);color:var(--accent)}
+.btn.danger.on{background:color-mix(in srgb,var(--bad) 22%,var(--card2));border-color:var(--bad);color:var(--bad)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.seg button{background:var(--card2);border:0;padding:8px 14px;min-width:42px;border-right:1px solid var(--line2)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:#04120f;font-weight:700}
+/* live */
+.live{display:grid;grid-template-columns:minmax(220px,1fr) minmax(300px,1.25fr) minmax(220px,1fr);gap:20px;align-items:stretch}
+.col{display:flex;flex-direction:column;gap:12px;position:relative}
+.col>h2{margin:0 4px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.tile{position:relative;display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;align-items:center;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);transition:border-color .2s,box-shadow .2s}
+.tile.master{border-color:var(--master);box-shadow:0 0 0 1px color-mix(in srgb,var(--master) 40%,transparent),0 0 28px color-mix(in srgb,var(--master) 14%,transparent)}
+.tile.onair .num{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--bad)}
+.num{grid-row:span 2;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:18px;background:var(--card2);border:1px solid var(--line2)}
+.tile .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .sub{color:var(--dim);font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tile .bpm{grid-row:span 2;text-align:right;font:600 20px var(--mono)}
+.tile .bpm small{display:block;font:12px var(--font);color:var(--dim)}
+.crown{color:var(--master);font-size:16px;margin-right:4px}
+.badge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--line2);color:var(--dim);text-decoration:none}
+.badge.full{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}
+.badge.tempo,.badge.partial,.badge.unverified{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.badge.unsupported{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
+.empty{padding:28px 16px;text-align:center;color:var(--dim);border:1px dashed var(--line2);border-radius:var(--radius)}
+.valve{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;min-height:380px;background:linear-gradient(180deg,var(--card),var(--bg2));container-type:inline-size}
+.ring{position:relative;width:min(100%,300px);aspect-ratio:1}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .track{stroke:var(--line);fill:none}
+.ring .val{fill:none;stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .4s,stroke .3s}
+.ring .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.bigbpm{font:700 clamp(44px,18cqw,76px)/1 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.unit{color:var(--dim);letter-spacing:.2em;font-size:12px}
+.statelbl{margin-top:6px;padding:2px 12px;border-radius:99px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:var(--card2);color:var(--dim)}
+.statelbl.locked{background:color-mix(in srgb,var(--good) 20%,var(--card2));color:var(--good)}
+.statelbl.locking,.statelbl.coasting{background:color-mix(in srgb,var(--warn) 20%,var(--card2));color:var(--warn)}
+.lamps{display:flex;gap:12px}
+.lamp{width:46px;height:12px;border-radius:99px;background:var(--line);transition:background .06s,box-shadow .06s}
+.lamp.on{background:var(--accent2);box-shadow:0 0 16px var(--accent2)}
+.lamp.on.one{background:var(--accent);box-shadow:0 0 18px var(--accent)}
+.barbeat{font:600 26px var(--mono)}
+.nobar{color:var(--warn);font-size:13px;font-weight:600}
+.pipe{position:absolute;top:50%;height:2px;width:20px;background:var(--line2)}
+.out{grid-template-columns:auto 1fr}
+.out .num{border-radius:12px;font-size:12px;letter-spacing:.06em}
+.tile .sub{overflow-wrap:anywhere}
+.out .err{color:var(--bad);font-size:13px;grid-column:2}
+.strip{margin-top:20px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--dim);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums}
+td.mono,.mono{font-family:var(--mono)}
+.tablewrap{overflow-x:auto}
+.controls{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;margin-top:20px;padding:14px 16px}
+.ctl{display:flex;align-items:center;gap:10px}
+.ctl label,.ctl .lbl{color:var(--dim);font-size:13px}
+.stepper{display:inline-flex;align-items:center;gap:6px}
+.stepper .v{min-width:72px;text-align:center;font-family:var(--mono)}
+.stepper button{width:34px;height:34px;padding:0}
+details.menu{position:relative}
+details.menu summary{list-style:none;cursor:pointer}
+details.menu summary::-webkit-details-marker{display:none}
+details.menu .pop{position:absolute;bottom:calc(100% + 6px);right:0;z-index:5;min-width:210px;background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:6px;display:flex;flex-direction:column;box-shadow:0 12px 40px #000a}
+.pop a{padding:8px 12px;border-radius:8px;color:var(--text);text-decoration:none}
+.pop a:hover{background:var(--card)}
+/* forms */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.field>span{color:var(--dim);font-size:13px}
+.field input[type=text],.field input[type=number],.field select{background:var(--bg2);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;width:100%}
+.field input:focus,.field select:focus{border-color:var(--accent);outline:none}
+.check{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.switch{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.note{color:var(--dim);font-size:13px}
+.msg{min-height:22px;font-size:14px}
+.msg.ok{color:var(--good)} .msg.err{color:var(--bad)}
+canvas#scope{width:100%;height:320px;background:var(--bg2);border-radius:12px;border:1px solid var(--line)}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin:14px 0}
+.stat b{display:block;font:600 24px var(--mono)} .stat span{color:var(--dim);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+.hidden{display:none!important}
+/* stage mode */
+body.stage header,body.stage .controls,body.stage .strip,body.stage .col,body.stage .valve h2,body.stage .valve .note{display:none}
+body.stage main{max-width:none;padding:0}
+body.stage .live{display:block}
+body.stage .valve{min-height:100vh;border:0;border-radius:0;gap:2.2vmin;padding-bottom:9vh}
+body.stage .ring{width:min(52vh,70vw)}
+body.stage .bigbpm{font-size:min(11vh,14vw)}
+body.stage .barbeat{font-size:min(7vh,8vw)}
+body.stage .lamp{width:9vmin;height:2.4vmin}
+body.stage .stagebar{display:flex}
+.stagebar{display:none;gap:18px;position:fixed;left:0;right:0;bottom:0;padding:14px 22px;justify-content:space-between;align-items:center;font-size:clamp(16px,2.6vmin,28px);background:#000b}
+.stagebar .x{font-size:14px;color:var(--dim)}
+.offline .live,.offline .valve .ring{opacity:.45}
+@media (max-width:1000px){.live{grid-template-columns:1fr 1fr}.valve{grid-column:1/-1;order:-1;min-height:0}}
+@media (max-width:640px){main{padding:12px}header{padding:8px 12px;gap:8px}.logo span{display:none}.live{grid-template-columns:1fr}.conn span{display:none}.controls{gap:12px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" aria-label="Shunt">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#2ee6c4" stroke-width="2.4"/><path d="M6 16h6l3-7 3 14 3-7h5" fill="none" stroke="#2ee6c4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>SHUNT</span>
+  </div>
+  <nav id="nav" aria-label="Pages">
+    <a href="#/live">Live</a><a href="#/outputs">Outputs</a><a href="#/tracklist">Tracklist</a>
+    <a href="#/scope">Phase scope</a><a href="#/compat">Compatibility</a><a href="#/diagnostics">Diagnostics</a>
+  </nav>
+  <div class="conn" role="status" aria-live="polite"><i class="dot" id="connDot"></i><span id="connTxt">Connecting</span></div>
+  <button class="btn" id="stageBtn" title="Stage mode (S)">Stage</button>
+</header>
+<main id="main">
+  <div class="banner bad" id="engineBanner" role="alert"></div>
+  <div class="banner" id="offlineBanner" role="alert">Engine not reachable. Retrying automatically…</div>
+  <div class="banner" id="firstRun"></div>
+  <section id="page"></section>
+</main>
+<div class="stagebar" id="stagebar"><div id="sbMaster"></div><div id="sbOut"></div><div class="x">Press Esc to leave stage mode</div></div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const k in (attrs||{})){
+    const v=attrs[k];
+    if(v==null||v===false)continue;
+    if(k==='class')e.className=v; else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);
+    else if(k==='text')e.textContent=v; else e.setAttribute(k,v===true?'':v);
+  }
+  for(const c of kids.flat())if(c!=null&&c!==false)e.append(c.nodeType?c:document.createTextNode(c));
+  return e;
+}
+const api=async(path,body)=>{
+  const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+};
+let S=null, lastMsg=0, ws=null, backoff=500, page='live';
+const fmtBpm=v=>v>0?v.toFixed(1):'---.-';
+const fmtTime=ms=>ms?new Date(ms).toLocaleTimeString([], {hour12:false}):'';
+const pages={};
+
+/* ---------- connection ---------- */
+function connect(){
+  const url=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+  ws=new WebSocket(url);
+  ws.onopen=()=>{backoff=500};
+  ws.onmessage=e=>{try{S=JSON.parse(e.data);lastMsg=performance.now();render()}catch(_){}};
+  ws.onclose=()=>{ws=null;setTimeout(connect,backoff);backoff=Math.min(backoff*1.7,8000)};
+  ws.onerror=()=>ws&&ws.close();
+}
+setInterval(()=>{
+  const off=!S||performance.now()-lastMsg>2500;
+  document.body.classList.toggle('offline',off);
+  $('#offlineBanner').classList.toggle('show',off);
+  $('#connDot').className='dot '+(off?'bad':(S.state==='locked'?'on':'warn'));
+  $('#connTxt').textContent=off?'Offline':(S.state==='locked'?'Locked':S.state==='idle'?'No master':'Connected');
+},500);
+
+/* ---------- router ---------- */
+function route(){
+  page=(location.hash.replace('#/','')||'live');
+  if(!pages[page])page='live';
+  document.querySelectorAll('nav a').forEach(a=>a.setAttribute('aria-current',a.getAttribute('href')==='#/'+page?'page':'false'));
+  const root=$('#page');root.replaceChildren();
+  pages[page].mount(root);
+  render();
+}
+function render(){
+  if(S){
+    const eb=$('#engineBanner');eb.textContent=S.engineError||'';eb.classList.toggle('show',!!S.engineError);
+    renderFirstRun();
+    $('#sbMaster').textContent=(S.masterName||'No master')+'  ·  '+fmtBpm(S.bpm)+' BPM  ·  '+(S.barKnown?S.beatInBar:'-')+'/4';
+    $('#sbOut').textContent=['link','midi','osc'].map(k=>k.toUpperCase()+(S.outputs[k].connected?' ●':' ○')).join('   ');
+  }
+  if(pages[page]&&pages[page].update&&S)pages[page].update(S);
+}
+let ifaceList=null;
+async function renderFirstRun(){
+  const b=$('#firstRun');
+  if(!S.firstRun||sessionStorage.getItem('frDismiss')){b.classList.remove('show');return}
+  b.classList.add('show');
+  if(b.dataset.built)return;b.dataset.built=1;
+  ifaceList=await api('/api/interfaces');
+  const sel=h('select',{'aria-label':'Network interface'},ifaceList.map(i=>h('option',{value:i.name,selected:i.name===S.interface},i.name+'  '+i.ip)));
+  b.replaceChildren(h('strong',{text:'First run: '}),'Shunt is listening on ',h('b',{text:S.interface||'no interface'}),'. Choose the interface wired to the player network. If your computer also runs rekordbox, use Passive mode. Allow Shunt through the firewall for UDP 50000-50002. ',
+    sel,h('button',{class:'btn primary',onclick:async()=>{await api('/api/config',{interface:sel.value});b.dataset.built='';sessionStorage.setItem('frDismiss','1');b.classList.remove('show')}},'Use this interface'),
+    h('button',{class:'btn',onclick:()=>{sessionStorage.setItem('frDismiss','1');b.classList.remove('show')}},'Dismiss'));
+}
+
+/* ---------- live ---------- */
+pages.live={
+  mount(root){
+    const L=this.refs={};
+    const R=44,C=2*Math.PI*R;
+    L.players=h('div',{class:'col'});L.outs=h('div',{class:'col side'});
+    const svg=`<svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="${R}" stroke-width="3"/><circle class="val" id="confArc" cx="50" cy="50" r="${R}" stroke-width="3" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>`;
+    const ring=h('div',{class:'ring'});ring.innerHTML=svg;
+    L.bpm=h('div',{class:'bigbpm','aria-live':'off'},'---.-');L.state=h('div',{class:'statelbl'},'idle');
+    L.mid=h('div',{class:'mid'},L.bpm,h('div',{class:'unit'},'BPM'),L.state);ring.append(L.mid);
+    L.arc=ring.querySelector('#confArc');L.C=C;
+    L.lamps=[1,2,3,4].map(i=>h('i',{class:'lamp'+(i===1?' one':'')}));
+    L.barbeat=h('div',{class:'barbeat'},'-/4');L.nobar=h('div',{class:'nobar hidden'},'No bar information: beat only');
+    L.conf=h('div',{class:'note'},'');L.master=h('div',{class:'note'},'');
+    const valve=h('div',{class:'card valve'},h('h2',{},'Shunt'),ring,h('div',{class:'lamps'},L.lamps),L.barbeat,L.nobar,L.master,L.conf);
+    L.players.append(h('h2',{},'Player network'));L.outs.append(h('h2',{},'Outputs'));
+    L.devs=h('div',{class:'col',style:'gap:12px'});L.players.append(L.devs);
+    L.outList=h('div',{class:'col',style:'gap:12px'});L.outs.append(L.outList);
+    root.append(h('div',{class:'live'},L.players,valve,L.outs));
+    // controls
+    const seg=h('div',{class:'seg',role:'group','aria-label':'Bar offset'},[0,1,2,3].map(i=>h('button',{'aria-pressed':'false',onclick:()=>api('/api/baroffset',{value:i})},String(i))));
+    L.seg=seg;
+    L.beatOnly=h('button',{class:'btn','aria-pressed':'false',onclick:()=>api('/api/beatonly',{value:!S.beatOnly})},'Beat only');
+    L.mode=h('div',{class:'seg',role:'group','aria-label':'Mode'},['follow','passive'].map(m=>h('button',{'data-m':m,'aria-pressed':'false',onclick:()=>api('/api/config',{mode:m})},m==='follow'?'Follow':'Passive')));
+    L.lat=h('span',{class:'v'},'');
+    const step=d=>()=>api('/api/latency',{ms:Math.round((S.scope.latencyMs+d)*10)/10});
+    const lat=h('div',{class:'stepper'},h('button',{class:'btn','aria-label':'Latency minus',onclick:step(-0.5)},'−'),L.lat,h('button',{class:'btn','aria-label':'Latency plus',onclick:step(0.5)},'+'));
+    L.prof=h('div',{class:'seg',role:'group','aria-label':'Profile'},['stage','rehearsal'].map(m=>h('button',{'data-m':m,'aria-pressed':'false',onclick:()=>api('/api/config',{profile:m})},m[0].toUpperCase()+m.slice(1))));
+    L.rec=h('button',{class:'btn danger','aria-pressed':'false',onclick:()=>api('/api/record',{on:!S.recording})},'● Record');
+    const menu=h('details',{class:'menu'},h('summary',{class:'btn'},'Export tracklist ▾'),h('div',{class:'pop'},
+      [['csv','CSV'],['cue','CUE sheet'],['txt','Timestamp text'],['ndjson','NDJSON'],['report','Performance report CSV']].map(([f,t])=>h('a',{href:'/api/export?format='+f,download:''},t))));
+    root.append(h('div',{class:'card controls'},
+      h('div',{class:'ctl'},h('span',{class:'lbl'},'Bar offset'),seg),L.beatOnly,
+      h('div',{class:'ctl'},h('span',{class:'lbl'},'Mode'),L.mode),
+      h('div',{class:'ctl'},h('span',{class:'lbl'},'Latency'),lat),
+      h('div',{class:'ctl'},h('span',{class:'lbl'},'Profile'),L.prof),
+      h('div',{style:'margin-left:auto;display:flex;gap:10px'},L.rec,menu)));
+    // tracklist strip
+    L.strip=h('tbody');
+    root.append(h('div',{class:'card strip'},h('h2',{},'Tracklist'),h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},['Time','Deck','Track','Played'].map(t=>h('th',{},t)))),L.strip))));
+    this.rows=-1;
+  },
+  update(s){
+    const L=this.refs;
+    L.bpm.textContent=fmtBpm(s.bpm);
+    L.state.textContent=s.state;L.state.className='statelbl '+s.state;
+    const c=Math.max(0,Math.min(1,s.confidence));
+    L.arc.style.strokeDashoffset=L.C*(1-c);
+    L.arc.style.stroke=c>.8?'var(--accent)':c>.5?'var(--warn)':'var(--bad)';
+    L.lamps.forEach((l,i)=>l.classList.toggle('on',s.playing&&s.barKnown?(i+1)===s.beatInBar:(!s.barKnown&&s.playing&&i===((s.beatIndex%4)+4)%4)));
+    L.barbeat.textContent=s.barKnown?s.beatInBar+' / 4':'– / –';
+    L.nobar.classList.toggle('hidden',s.barKnown||s.state==='idle');
+    L.master.textContent=s.masterName?('Master: '+s.masterName+' (#'+s.master+')'):'Waiting for a master deck';
+    L.conf.textContent='Confidence '+Math.round(c*100)+'%';
+    [...L.seg.children].forEach((b,i)=>b.setAttribute('aria-pressed',String(i===s.barOffset)));
+    L.beatOnly.classList.toggle('on',s.beatOnly);L.beatOnly.setAttribute('aria-pressed',String(s.beatOnly));
+    [...L.mode.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===s.mode)));
+    [...L.prof.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===s.profile)));
+    L.lat.textContent=s.scope.latencyMs.toFixed(1)+' ms';
+    L.rec.classList.toggle('on',s.recording);L.rec.setAttribute('aria-pressed',String(s.recording));
+    L.rec.textContent=s.recording?'● Recording':'● Record';
+    // players
+    const sig=JSON.stringify(s.devices.map(d=>[d.number,d.name,d.model,d.master,d.playing,d.onAir,Math.round((d.bpm||0)*10),d.trackId]));
+    if(sig!==this.sig){
+      this.sig=sig;
+      if(!s.devices.length)L.devs.replaceChildren(h('div',{class:'empty'},'No players found yet. Connect Shunt to the player network switch, or check the interface in Outputs → Network.'));
+      else L.devs.replaceChildren(...s.devices.map(d=>h('div',{class:'tile'+(d.master?' master':'')+(d.onAir?' onair':'')},
+        h('div',{class:'num'},String(d.number)),
+        h('div',{class:'name'},d.master?h('span',{class:'crown',title:'Tempo master'},'♛'):null,d.name),
+        d.kind==='mixer'||d.bpm==null?h('div',{class:'bpm'},''):h('div',{class:'bpm'},fmtBpm(d.bpm),h('small',{},(d.pitchPct>=0?'+':'')+(d.pitchPct||0).toFixed(1)+'%')),
+        h('div',{class:'sub'},h('a',{class:'badge '+d.badge,href:'#/compat',title:'Compatibility'},d.model),
+          d.kind==='mixer'?null:h('span',{},d.playing?'▶ playing':'■ stopped'),d.trackId?h('span',{class:'mono'},'ID '+d.trackId):null,d.onAir?h('b',{style:'color:var(--bad)'},'ON AIR'):null)))); }
+    // outputs
+    const defs=[['link','LINK',o=>o.available?(o.peers+' peers'):'SDK not built in'],['midi','MIDI',o=>o.detail||'no port'],['osc','OSC',o=>o.detail]];
+    L.outList.replaceChildren(...defs.map(([k,t,f])=>{const o=s.outputs[k];
+      return h('a',{class:'tile out',href:'#/outputs',style:'text-decoration:none;color:inherit'},h('div',{class:'num'},t),
+        h('div',{},h('div',{class:'name'},h('i',{class:'dot '+(o.connected?'on':o.enabled?'bad':'')}),' ',o.enabled?(o.connected?'Active':'Problem'):'Off'),
+          h('div',{class:'sub'},f(o),k==='midi'&&o.enabled&&o.connected?h('span',{class:'mono'},'jitter '+o.jitterUs.toFixed(0)+' µs'):null,k!=='link'&&o.enabled?h('span',{class:'mono'},o.sent+' msgs'):null)),
+        o.error&&o.enabled?h('div',{class:'err'},o.error):null)}));
+    if(s.tracks!==this.rows){this.rows=s.tracks;api('/api/tracklist').then(t=>{
+      const rows=t.rows.slice(-5).reverse();
+      L.strip.replaceChildren(...(rows.length?rows.map(r=>h('tr',{},h('td',{class:'mono'},fmtTime(r.startedAt)),h('td',{},'#'+r.deck),h('td',{},r.title||r.artist?((r.artist||'ID')+' - '+(r.title||'ID')):('ID '+r.rekordboxId)),h('td',{},Math.round(r.playedPct)+'%'))):[h('tr',{},h('td',{colspan:4,class:'note'},'Nothing logged yet. A track counts after 30 s on air.'))]))})}
+  }
+};
+
+/* ---------- outputs / settings ---------- */
+pages.outputs={
+  mount(root){
+    this.msg=h('div',{class:'msg','aria-live':'polite'});
+    this.form=h('div',{class:'grid2'});root.append(this.form,h('div',{style:'margin-top:16px;display:flex;gap:14px;align-items:center'},h('button',{class:'btn primary',id:'saveBtn',onclick:()=>this.save()},'Save and apply'),this.msg));
+    Promise.all([api('/api/config'),api('/api/midi-ports'),api('/api/interfaces')]).then(([c,p,i])=>{this.cfg=c;this.build(c,p,i)});
+  },
+  build(c,ports,ifaces){
+    const f={};this.f=f;
+    const text=(k,label,v,type='text')=>{f[k]=h('input',{type,value:v==null?'':v});return h('label',{class:'field'},h('span',{},label),f[k])};
+    const sel=(k,label,opts,v)=>{f[k]=h('select',{},opts.map(([val,t])=>h('option',{value:val,selected:String(val)===String(v)},t)));return h('label',{class:'field'},h('span',{},label),f[k])};
+    const chk=(k,label,v)=>{f[k]=h('input',{type:'checkbox',checked:!!v});return h('label',{class:'check'},f[k],label)};
+    const M=c.midi||{},O=c.osc||{};
+    this.form.replaceChildren(
+      h('div',{class:'card'},h('h2',{},'Network'),
+        sel('interface','Interface (wired to the player network)',[['', 'Automatic'],...ifaces.map(i=>[i.name,i.name+'  '+i.ip])],c.interface),
+        sel('mode','Mode',[['follow','Follow: join as a virtual device'],['passive','Passive: listen only (use with rekordbox on this computer)']],c.mode),
+        text('deviceNumber','Virtual device number (1–6)',c.deviceNumber,'number'),
+        text('venue','Venue (used in exports)',c.venue),text('performer','Performer (used in CUE sheets)',c.performer)),
+      h('div',{class:'card'},h('h2',{},'Ableton Link'),chk('linkEnabled','Enable Link output',c.link&&c.link.enabled),
+        h('p',{class:'note'},S&&!S.outputs.link.available?'This build has no Link SDK. Link needs a licensed build; MIDI clock and OSC work now.':'Quantum 4 when the bar is known, otherwise 1.')),
+      h('div',{class:'card'},h('h2',{},'MIDI clock'),chk('midiEnabled','Enable MIDI clock output',M.enabled),
+        sel('midiPort','Port',[['','Select a port…'],...ports.map(p=>[p.id,p.name]),...(M.port&&!ports.find(p=>p.id===M.port)?[[M.port,M.port+' (missing)']]:[])],M.port),
+        sel('midiPause','When the deck pauses',[['keep','Keep clock running at last tempo'],['stop','Send Stop, Continue on resume']],M.pause),
+        chk('startFirst','Send Start on first lock',M.startOnFirstLock!==false),chk('startReset','Send Start on reset',M.startOnReset),chk('spp','Send Song Position on reset',M.sppOnReset),
+        h('p',{class:'note'},ports.length?'Raw MIDI devices found on this host.':'No raw MIDI devices found. On a desktop, use the JUCE shell for system MIDI ports; on the Box use the DIN UART or a USB MIDI interface.')),
+      h('div',{class:'card'},h('h2',{},'OSC'),chk('oscEnabled','Enable OSC output',O.enabled),
+        text('oscHost','Destination host',O.host),text('oscPort','Destination port',O.port,'number'),
+        sel('oscProfile','Profile',[['generic','Generic /shunt'],['resolume','Resolume'],['grandma3','grandMA3'],['magicq','MagicQ'],['qlab','QLab']],O.profile),
+        chk('oscInEnabled','Accept OSC control: /shunt/baroffset i, /shunt/beatonly i',O.inEnabled),text('oscInPort','Listen on UDP port',O.inPort,'number'),
+        text('qlabMaster','QLab cue on master change',O.qlabMasterCue,'number'),text('qlabTrack','QLab cue on track load',O.qlabTrackCue,'number')));
+  },
+  async save(){
+    const f=this.f;if(!f)return;const v=k=>f[k].type==='checkbox'?f[k].checked:f[k].value;
+    const patch={interface:v('interface'),mode:v('mode'),deviceNumber:+v('deviceNumber'),venue:v('venue'),performer:v('performer'),
+      link:{enabled:v('linkEnabled')},
+      midi:{enabled:v('midiEnabled'),port:v('midiPort'),pause:v('midiPause'),startOnFirstLock:v('startFirst'),startOnReset:v('startReset'),sppOnReset:v('spp')},
+      osc:{enabled:v('oscEnabled'),host:v('oscHost'),port:+v('oscPort'),profile:v('oscProfile'),inEnabled:v('oscInEnabled'),inPort:+v('oscInPort'),qlabMasterCue:+v('qlabMaster'),qlabTrackCue:+v('qlabTrack')}};
+    try{await api('/api/config',patch);this.msg.className='msg ok';this.msg.textContent='Saved and applied.'}
+    catch(e){this.msg.className='msg err';this.msg.textContent=e.message}
+  },
+  update(){}
+};
+
+/* ---------- tracklist ---------- */
+pages.tracklist={
+  mount(root){
+    this.body=h('tbody');this.rows=-1;this.imp=h('div',{class:'msg','aria-live':'polite'});
+    root.append(h('div',{class:'card'},h('h2',{},'Tracklist'),
+      h('div',{style:'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px'},
+        h('button',{class:'btn',onclick:()=>api('/api/setstart')},'Set start marker now'),
+        [['csv','CSV'],['cue','CUE'],['txt','Timestamps'],['ndjson','NDJSON'],['report','Report CSV']].map(([f,t])=>h('a',{class:'btn',style:'text-decoration:none',href:'/api/export?format='+f,download:''},t)),
+        h('label',{class:'btn',style:'cursor:pointer'},'Import rekordbox XML',h('input',{type:'file',accept:'.xml,text/xml',class:'sr',onchange:async e=>{
+          const f=e.target.files[0];if(!f)return;this.imp.className='msg';this.imp.textContent='Importing '+f.name+'…';
+          try{const r=await fetch('/api/rekordbox-xml',{method:'POST',body:await f.text()});const j=await r.json();if(!r.ok)throw new Error(j.error);
+            this.imp.className='msg ok';this.imp.textContent='Matched metadata for '+j.tracks+' tracks in the file.';this.rows=-1}
+          catch(x){this.imp.className='msg err';this.imp.textContent=x.message}e.target.value=''}})),
+        h('button',{class:'btn',style:'margin-left:auto',onclick:async()=>{if(confirm('Start a new session? The current rows stay in the saved NDJSON file.')){await api('/api/session/clear',{});this.rows=-1}}},'New session')),
+      this.imp,
+      h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},['#','Start','End','Deck','Track','Slot','Played'].map(t=>h('th',{},t)))),this.body)),
+      h('p',{class:'note'},'Rows show the rekordbox id until you import a rekordbox XML export (File → Export Collection in xml format); names then fill in everywhere, including exports. A track counts as played after 30 s or 20 percent on air.')));
+  },
+  update(s){
+    if(s.tracks===this.rows)return;this.rows=s.tracks;
+    api('/api/tracklist').then(t=>{
+      this.body.replaceChildren(...(t.rows.length?t.rows.map((r,i)=>h('tr',{},h('td',{},i+1),h('td',{class:'mono'},fmtTime(r.startedAt)),h('td',{class:'mono'},fmtTime(r.endedAt)),h('td',{},'#'+r.deck),
+        h('td',{},r.title||r.artist?((r.artist||'ID')+' - '+(r.title||'ID')):('ID '+r.rekordboxId)),h('td',{},r.slot),h('td',{},Math.round(r.playedPct)+'%'))):[h('tr',{},h('td',{colspan:7,class:'note'},'Nothing logged yet.'))]));
+    });
+  }
+};
+
+/* ---------- phase scope ---------- */
+pages.scope={
+  mount(root){
+    this.cv=h('canvas',{id:'scope',role:'img','aria-label':'Phase residuals, last 64 beats'});
+    this.stats={rms:h('b',{},'–'),med:h('b',{},'–'),lat:h('b',{},'–')};
+    root.append(h('div',{class:'card'},h('h2',{},'Phase scope: last 64 beats'),this.cv,
+      h('div',{class:'stats'},h('div',{class:'stat'},this.stats.rms,h('span',{},'RMS ms')),h('div',{class:'stat'},this.stats.med,h('span',{},'Median ms')),h('div',{class:'stat'},this.stats.lat,h('span',{},'Latency offset ms'))),
+      h('div',{style:'display:flex;gap:10px'},h('button',{class:'btn',onclick:async e=>{try{await api('/api/latency',{fromScope:true})}catch(x){e.target.textContent=x.message}}},'Centre latency on scope median')),
+      h('p',{class:'note'},'Each dot is how far a master beat arrived from where the filter expected it. Spread shows network and player jitter; the guide lines are ±1 ms and ±4 ms.')));
+  },
+  update(s){
+    const sc=s.scope;this.stats.rms.textContent=sc.rmsMs.toFixed(2);this.stats.med.textContent=sc.medianMs.toFixed(2);this.stats.lat.textContent=sc.latencyMs.toFixed(1);
+    const cv=this.cv,dpr=devicePixelRatio||1,w=cv.clientWidth,hh=cv.clientHeight;
+    if(cv.width!==w*dpr){cv.width=w*dpr;cv.height=hh*dpr}
+    const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,hh);
+    const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
+    const R=8,mid=hh/2,sy=v=>mid-(v/R)*(hh/2-10);
+    g.font='11px system-ui';g.textBaseline='middle';
+    [[0,'0'],[1,'1'],[-1,''],[4,'4 ms'],[-4,'']].forEach(([v,t])=>{
+      g.strokeStyle=v===0?col('--line2'):col('--line');g.setLineDash(v===0?[]:[4,4]);g.beginPath();g.moveTo(34,sy(v));g.lineTo(w,sy(v));g.stroke();
+      g.fillStyle=col('--faint');if(t)g.fillText(t,4,sy(v)-(v<0?0:0))});
+    g.setLineDash([]);
+    const r=sc.residualsMs;if(!r.length){g.fillStyle=col('--dim');g.fillText('Waiting for master beats…',48,mid-20);return}
+    const dx=(w-50)/63;
+    g.strokeStyle=col('--accent2');g.lineWidth=1.5;g.beginPath();
+    r.forEach((v,i)=>{const x=40+(64-r.length+i)*dx,y=sy(Math.max(-R,Math.min(R,v)));i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+    r.forEach((v,i)=>{const x=40+(64-r.length+i)*dx,y=sy(Math.max(-R,Math.min(R,v)));g.fillStyle=Math.abs(v)>4?col('--bad'):Math.abs(v)>1?col('--warn'):col('--accent');g.beginPath();g.arc(x,y,3,0,7);g.fill()});
+  }
+};
+
+/* ---------- compatibility ---------- */
+const badgeText={full:'Full',tempo:'Tempo only',partial:'Partial',unverified:'Unverified',unsupported:'Unsupported'};
+pages.compat={
+  mount(root){
+    const body=h('tbody');
+    root.append(h('div',{class:'card'},h('h2',{},'Compatibility'),h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},['Model','Support','Notes'].map(t=>h('th',{},t)))),body)),
+      h('p',{class:'note'},'Shunt works with PRO DJ LINK compatible players and mixers from AlphaTheta / Pioneer DJ. PRO DJ LINK, rekordbox and Pioneer DJ are trademarks of their respective owners. Shunt is an independent product and is not affiliated with, endorsed, licensed or certified by AlphaTheta Corporation or Pioneer Corporation.')));
+    api('/api/compat').then(rows=>body.replaceChildren(...rows.map(r=>h('tr',{},h('td',{},r.model),h('td',{},h('span',{class:'badge '+r.badge},badgeText[r.badge])),h('td',{class:'note'},r.note)))));
+  },update(){}
+};
+
+/* ---------- diagnostics ---------- */
+pages.diagnostics={
+  mount(root){
+    this.sum=h('div',{class:'stats'});this.types=h('tbody');this.devs=h('tbody');
+    root.append(h('div',{class:'grid2'},
+      h('div',{class:'card'},h('h2',{},'Engine'),this.sum,
+        h('button',{class:'btn danger','aria-pressed':'false',id:'recBtn',onclick:()=>api('/api/record',{on:!S.recording})},'Record session to pcapng'),
+        h('p',{class:'note'},'Captures are saved under the data directory (captures/). Replay with shunt_cli --replay.')),
+      h('div',{class:'card'},h('h2',{},'Packets by type'),h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},h('th',{},'Type'),h('th',{},'Count'))),this.types)))),
+      h('div',{class:'card',style:'margin-top:20px'},h('h2',{},'Devices'),h('div',{class:'tablewrap'},h('table',{},h('thead',{},h('tr',{},['#','Name','Model','Kind','IP','Last seen'].map(t=>h('th',{},t)))),this.devs))));
+  },
+  update(s){
+    const st=(v,l)=>h('div',{class:'stat'},h('b',{},v),h('span',{},l));
+    this.sum.replaceChildren(st(s.interface||'–','Interface'),st(s.timestampSource||'–','Timestamps'),st(s.claim+(s.deviceNumber?' #'+s.deviceNumber:''),'Claim'),st(Math.floor(s.uptimeS)+' s','Uptime'),
+      st(s.counters.datagrams,'Datagrams'),st(s.counters.parseErrors,'Parse errors'));
+    const t=Object.entries(s.counters.perType);
+    this.types.replaceChildren(...(t.length?t.map(([k,v])=>h('tr',{},h('td',{class:'mono'},k),h('td',{},v))):[h('tr',{},h('td',{colspan:2,class:'note'},'No packets yet'))]));
+    this.devs.replaceChildren(...s.devices.map(d=>h('tr',{},h('td',{},d.number),h('td',{},d.name),h('td',{},h('span',{class:'badge '+d.badge},d.model)),h('td',{},d.kind),h('td',{class:'mono'},d.ip),h('td',{},(d.lastSeenMs/1000).toFixed(1)+' s'))));
+    const b=$('#recBtn');if(b){b.classList.toggle('on',s.recording);b.textContent=s.recording?'● Recording… click to stop':'Record session to pcapng'}
+  }
+};
+
+/* ---------- stage mode and keys ---------- */
+function stage(on){document.body.classList.toggle('stage',on);if(on){if(location.hash!=='#/live')location.hash='#/live';document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{})}else if(document.fullscreenElement)document.exitFullscreen()}
+$('#stageBtn').onclick=()=>stage(true);
+addEventListener('keydown',e=>{
+  if(e.target.matches('input,select,textarea'))return;
+  if(e.key==='s'||e.key==='S')stage(!document.body.classList.contains('stage'));
+  if(e.key==='Escape'&&document.body.classList.contains('stage'))stage(false);
+});
+addEventListener('hashchange',route);
+route();connect();
+</script>
+</body>
+</html>

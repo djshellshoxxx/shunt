@@ -14,7 +14,22 @@ appliance ("Shunt Box"). C++17, JUCE 8, CMake, same toolchain as
 [Vivisect](https://github.com/djshellshoxxx/faultline) and
 [Pacemaker](https://github.com/djshellshoxxx/pacemaker).
 
-Status: specification stage.
+Status: protocol core, clock engine, MIDI clock, OSC, Link logic (SDK binding
+pending licence), tracklist logger and a web UI are implemented and tested.
+The JUCE desktop shell and the Box image are next.
+
+## Try it
+
+```sh
+cmake -S . -B build -G Ninja && cmake --build build
+ctest --test-dir build --output-on-failure
+./build/shuntsim --dest 127.0.0.1 --duration 600 &      # fake booth on loopback
+./build/shunt_headless --addr 127.0.0.1                 # then open http://localhost:8080/
+```
+
+On a real network use `--iface eth0` (the interface wired to the players).
+Pages: Live, Outputs, Tracklist, Phase scope, Compatibility, Diagnostics;
+press `S` for stage mode. `/overlay` is an OBS browser source.
 
 ## Documents
 
@@ -26,6 +41,8 @@ Status: specification stage.
 - `docs/specs/ES-04-product.md` — product engineering spec
 - `docs/specs/RS-*.md` — regular specs: outputs, appliance, desktop app and
   UX, tracklist logging, testing and CI, licensing and legal
+- `docs/specs/RS-07-outputs-core-and-web-ui.md` — outputs, core runtime, HTTP API, web UI
+- `docs/specs/FS-*.md` — feature specs FS-00 (extension points) to FS-09, with test and fixture rules; build order and merge rules in `docs/BUILD-PLAN-FEATURES.md`
 - `docs/DIFFERENTIATION.md` — what makes Shunt different, ranked extra
   features
 - `docs/PROJECT-PLAN.md` — phases, checklist, risks
