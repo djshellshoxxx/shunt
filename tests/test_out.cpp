@@ -1,260 +1,194 @@
-// ES-05 tests O-T1 to O-T13: MIDI clock, OSC, Link adapter (no drivers, no sockets).
+// RS-07 output tests O-T1 .. O-T6.
 #include "TestFramework.h"
-#include "shunt/out/LinkOutput.h"
-#include "shunt/out/MidiClock.h"
+#include "shunt/out/Link.h"
+#include "shunt/out/Midi.h"
 #include "shunt/out/Osc.h"
-#include <cmath>
-#include <vector>
+#include <cstring>
 
+using namespace shunt;
 using namespace shunt::out;
-using shunt::clock::Timeline;
 
 namespace {
-
-constexpr int64_t MS = 1'000'000;
-
-struct Msg { int64_t t; std::vector<uint8_t> b; };
-struct RecSink : IMidiSink {
-    std::vector<Msg> m;
-    void send(int64_t t, const uint8_t* b, size_t n) override { m.push_back({t, {b, b + n}}); }
-    std::vector<int64_t> times(uint8_t status) const {
-        std::vector<int64_t> v;
-        for (auto& x : m) if (x.b[0] == status) v.push_back(x.t);
-        return v;
-    }
-    int count(uint8_t s) const { return int(times(s).size()); }
-};
-
-Timeline mkTl(double bpm = 120, int64_t origin = 1'000 * MS) {
-    Timeline t; t.bpm = bpm; t.beatOriginNs = origin; t.beatIndex = 100; t.beatInBar = 1;
-    t.barKnown = true; t.playing = true; t.confidence = 1; t.resetSequence = 1;
+clock::Timeline tl120(bool barKnown = true) {
+    clock::Timeline t;
+    t.bpm = 120; t.beatOriginNs = 1'000'000'000; t.beatIndex = 10; t.beatInBar = 3;
+    t.barKnown = barKnown; t.playing = true; t.resetSequence = 1; t.masterDevice = 1;
     return t;
 }
-
-void run(MidiClockGenerator& g, const Timeline& tl, RecSink& s, int64_t from, int64_t to, int64_t step = 5 * MS) {
-    for (int64_t t = from; t <= to; t += step) g.update(tl, t, s);
+std::vector<MidiMsg> run(MidiClockGenerator& g, clock::Timeline tl, int64_t from, int64_t to, int64_t step = 1'000'000) {
+    std::vector<MidiMsg> all;
+    for (int64_t now = from; now < to; now += step) g.poll(now, 3'000'000, tl, all);
+    return all;
+}
+size_t count(const std::vector<MidiMsg>& v, uint8_t b) { size_t n = 0; for (auto& m : v) n += m.bytes[0] == b; return n; }
 }
 
-struct RecTx : IOscTransport {
-    std::vector<std::vector<uint8_t>> pk;
-    bool ok = true;
-    bool send(const uint8_t* d, size_t n) override { pk.emplace_back(d, d + n); return ok; }
-};
-
-struct FakeLink : ILinkBackend {
-    double raw = 0; int tempoCalls = 0, soft = 0, hard = 0, lastQuantum = 0; double lastTempo = 0;
-    void setTempo(double b, int64_t) override { ++tempoCalls; lastTempo = b; }
-    double beatAtTime(int64_t, double) const override { return raw; }
-    void requestBeatAtTime(double, int64_t, double q) override { ++soft; lastQuantum = int(q); }
-    void forceBeatAtTime(double, int64_t, double q) override { ++hard; lastQuantum = int(q); }
-    void setPlaying(bool, int64_t) override {}
-    size_t numPeers() const override { return 0; }
-};
-
-} // namespace
-
-TEST_CASE("O-T1 midi clock tick spacing and count") {
-    MidiClockGenerator g; RecSink s; const auto tl = mkTl(120);
-    run(g, tl, s, 1'000 * MS, 3'000 * MS);
-    auto t = s.times(0xF8);
-    CHECK(t.size() >= 95 && t.size() <= 97);   // 2 s at 48 ticks/s
-    for (size_t i = 1; i < t.size(); ++i) CHECK_NEAR(double(t[i] - t[i - 1]), 500e6 / 24, 2.0);
+TEST_CASE("O-T1 OSC encoding is byte exact") {
+    auto m = oscMessage("/shunt/bpm", {OscArg::Float(120.0f)});
+    const uint8_t expect[] = {'/', 's', 'h', 'u', 'n', 't', '/', 'b', 'p', 'm', 0, 0, ',', 'f', 0, 0, 0x42, 0xf0, 0, 0};
+    REQUIRE(m.size() == sizeof expect);
+    CHECK(std::memcmp(m.data(), expect, sizeof expect) == 0);
+    auto s = oscMessage("/a", {OscArg::Int(-1), OscArg::Str("hi")});
+    const uint8_t e2[] = {'/', 'a', 0, 0, ',', 'i', 's', 0, 0xff, 0xff, 0xff, 0xff, 'h', 'i', 0, 0};
+    REQUIRE(s.size() == sizeof e2);
+    CHECK(std::memcmp(s.data(), e2, sizeof e2) == 0);
 }
 
-TEST_CASE("O-T2 midi clock tempo change stays monotonic and adopts new spacing") {
-    MidiClockGenerator g; RecSink s; auto tl = mkTl(120);
-    run(g, tl, s, 1'000 * MS, 2'000 * MS);
-    tl.bpm = 130; tl.beatOriginNs = 2'000 * MS; tl.beatIndex = 102; tl.resetSequence = 1;
-    run(g, tl, s, 2'005 * MS, 3'000 * MS);
-    auto t = s.times(0xF8);
-    for (size_t i = 1; i < t.size(); ++i) CHECK(t[i] > t[i - 1]);
-    CHECK_NEAR(double(t.back() - t[t.size() - 2]), 60e9 / 130 / 24, 2.0);
+TEST_CASE("O-T2 MIDI clock at 120 BPM: 24 ppqn spacing, one Start on a bar boundary") {
+    MidiClockGenerator g;
+    auto msgs = run(g, tl120(), 1'000'000'000, 6'000'000'000);
+    CHECK_EQ(count(msgs, 0xFA), 1u);
+    size_t startIdx = 0;
+    for (size_t i = 0; i < msgs.size(); ++i) if (msgs[i].bytes[0] == 0xFA) startIdx = i;
+    // beat index 10 is beat 3: next bar boundary beats are 12 (inBar 1) -> 1 s + 2 beats * 0.5 s = 2.0 s
+    CHECK_NEAR(double(msgs[startIdx].timeNs), 2.0e9, 1.0);
+    std::vector<int64_t> clocks;
+    for (auto& m : msgs) if (m.bytes[0] == 0xF8) clocks.push_back(m.timeNs);
+    REQUIRE(clocks.size() > 100u);
+    for (size_t i = 1; i < clocks.size(); ++i) CHECK_NEAR(double(clocks[i] - clocks[i - 1]), 1e9 / 48.0, 2.0);
+    CHECK(msgs[startIdx].timeNs <= clocks.front());
 }
 
-TEST_CASE("O-T3 start once at beat on first lock; none on reset by default; optional") {
-    MidiClockGenerator g; RecSink s; auto tl = mkTl();
-    run(g, tl, s, 1'010 * MS, 3'000 * MS);
-    CHECK_EQ(s.count(0xFA), 1);
-    CHECK(s.times(0xFA)[0] == s.times(0xF8)[0]);
-    tl.resetSequence = 2; run(g, tl, s, 3'005 * MS, 4'000 * MS);
-    CHECK_EQ(s.count(0xFA), 1);
-    MidiClockConfig c; c.startOnReset = true;
-    MidiClockGenerator g2(c); RecSink s2; auto tl2 = mkTl();
-    run(g2, tl2, s2, 1'010 * MS, 3'000 * MS);
-    tl2.resetSequence = 2; run(g2, tl2, s2, 3'005 * MS, 4'000 * MS);
-    CHECK_EQ(s2.count(0xFA), 2);
+TEST_CASE("O-T2b without bar knowledge Start waits only for a beat") {
+    MidiClockGenerator g;
+    auto msgs = run(g, tl120(false), 1'000'000'000, 3'000'000'000);
+    size_t startIdx = 0;
+    for (size_t i = 0; i < msgs.size(); ++i) if (msgs[i].bytes[0] == 0xFA) startIdx = i;
+    CHECK(msgs[startIdx].timeNs < 1'600'000'000);
 }
 
-TEST_CASE("O-T4 pause keeps running by default; Stop mode stops then continues") {
-    auto tl = mkTl();
-    MidiClockGenerator g; RecSink s;
-    run(g, tl, s, 1'010 * MS, 2'000 * MS);
-    const int before = s.count(0xF8);
-    tl.playing = false; run(g, tl, s, 2'005 * MS, 3'000 * MS);
-    CHECK(s.count(0xF8) > before + 40);
-    CHECK_EQ(s.count(0xFC), 0);
-
-    MidiClockConfig c; c.pauseMode = PauseMode::Stop;
-    MidiClockGenerator g2(c); RecSink s2; auto t2 = mkTl();
-    run(g2, t2, s2, 1'010 * MS, 2'000 * MS);
-    t2.playing = false; run(g2, t2, s2, 2'005 * MS, 3'000 * MS);
-    const int atStop = s2.count(0xF8);
-    run(g2, t2, s2, 3'005 * MS, 3'500 * MS);
-    CHECK_EQ(s2.count(0xF8), atStop);
-    CHECK_EQ(s2.count(0xFC), 1);
-    t2.playing = true; run(g2, t2, s2, 3'505 * MS, 4'500 * MS);
-    CHECK_EQ(s2.count(0xFB), 1);
-    CHECK(s2.count(0xF8) > atStop);
-}
-
-TEST_CASE("O-T5 SPP then Continue on reset when enabled") {
-    MidiClockConfig c; c.sppOnReset = true;
-    MidiClockGenerator g(c); RecSink s; auto tl = mkTl();
-    run(g, tl, s, 1'010 * MS, 3'000 * MS);
-    tl.resetSequence = 2; tl.beatInBar = 3;   // beat 100 is bar beat 3
-    run(g, tl, s, 3'005 * MS, 4'000 * MS);
-    CHECK_EQ(s.count(0xF2), 1);
-    CHECK_EQ(s.count(0xFB), 1);
-    for (auto& m : s.m) if (m.b[0] == 0xF2) { CHECK(m.b[1] % 4 == 0 && m.b[1] < 16 && m.b[2] == 0); }
-}
-
-TEST_CASE("O-T6 overlapping updates never duplicate ticks") {
-    MidiClockGenerator g; RecSink s; const auto tl = mkTl(128);
-    run(g, tl, s, 1'010 * MS, 2'000 * MS, 1 * MS);
-    auto t = s.times(0xF8);
-    for (size_t i = 1; i < t.size(); ++i) CHECK(t[i] > t[i - 1]);
-}
-
-TEST_CASE("O-T7 osc encoding golden bytes") {
-    const auto b = encodeOsc({"/a", {int32_t(1), 1.0f, std::string("hi")}});
-    const std::vector<uint8_t> want = {'/', 'a', 0, 0, ',', 'i', 'f', 's', 0, 0, 0, 0,
-                                       0, 0, 0, 1, 0x3f, 0x80, 0, 0, 'h', 'i', 0, 0};
-    // type tag string ",ifs" is 4 chars + NUL, padded to 8 bytes
-    CHECK_EQ(b.size(), want.size());
-    CHECK(b == want);
-    const auto bun = encodeOscBundle({{"/a", {}}});
-    CHECK(std::string(bun.begin(), bun.begin() + 7) == "#bundle");
-    CHECK_EQ(bun.size(), size_t(8 + 8 + 4 + 8));
-    CHECK_EQ(int(bun[15]), 1);
-}
-
-TEST_CASE("O-T8 osc profile message selection") {
-    auto tl = mkTl(128);
-    for (auto prof : {OscProfile::Generic, OscProfile::Resolume, OscProfile::GrandMA3, OscProfile::MagicQ}) {
-        RecTx tx; OscConfig c; c.profile = prof; c.shuntMessages = false;
-        OscOutput o(tx, c);
-        o.update(tl, 1'000 * MS);
-        REQUIRE(!tx.pk.empty());
-        const std::string s(tx.pk[0].begin(), tx.pk[0].end());
-        if (prof == OscProfile::Generic) CHECK(s.find("/shunt/bpm") != std::string::npos);
-        if (prof == OscProfile::Resolume) CHECK(s.find("/composition/tempocontroller/tempo") != std::string::npos);
-        if (prof == OscProfile::GrandMA3) CHECK(s.find("Master 3.1 At BPM 128.00") != std::string::npos);
-        if (prof == OscProfile::MagicQ) CHECK(s.find("/magicq/bpm") != std::string::npos);
-        if (prof != OscProfile::Generic) CHECK(s.find("/shunt/bpm") == std::string::npos);
-    }
-}
-
-TEST_CASE("O-T9 osc tempo throttle") {
-    RecTx tx; OscOutput o(tx); auto tl = mkTl(128);
-    o.update(tl, 1'000 * MS);
-    const size_t n = tx.pk.size();
-    tl.bpm = 128.5; o.update(tl, 1'100 * MS);     // under 1 s
-    bool sawBpm = false;
-    for (size_t i = n; i < tx.pk.size(); ++i) sawBpm |= std::string(tx.pk[i].begin(), tx.pk[i].end()).find("/shunt/bpm") != std::string::npos;
-    CHECK(!sawBpm);
-    o.update(tl, 2'200 * MS);
-    sawBpm = false;
-    for (size_t i = n; i < tx.pk.size(); ++i) sawBpm |= std::string(tx.pk[i].begin(), tx.pk[i].end()).find("/shunt/bpm") != std::string::npos;
-    CHECK(sawBpm);
-}
-
-TEST_CASE("O-T10 osc one beat message per beat") {
-    RecTx tx; OscOutput o(tx); const auto tl = mkTl(120);
-    int beats = 0;
-    for (int64_t t = 1'000 * MS; t <= 3'000 * MS; t += 10 * MS) {
-        const size_t n = tx.pk.size();
-        o.update(tl, t);
-        for (size_t i = n; i < tx.pk.size(); ++i)
-            if (std::string(tx.pk[i].begin(), tx.pk[i].end()).find("/shunt/beat") != std::string::npos) ++beats;
-    }
-    CHECK(beats >= 3 && beats <= 4);
-}
-
-TEST_CASE("O-T11 link quantum follows barKnown") {
-    auto tl = mkTl(); CHECK_EQ(int(LinkOutput::quantumFor(tl)), 4);
-    tl.barKnown = false; CHECK_EQ(int(LinkOutput::quantumFor(tl)), 1);
-}
-
-TEST_CASE("O-T12 link hard on reset, soft after two errors, none when in tolerance") {
-    FakeLink fl; LinkOutput lo(fl); auto tl = mkTl(120);
-    // Beat k at 1000ms + n*500ms; Link phase exactly right (bar beat 1 at beatIndex 100 => phase 0 mod 4).
-    int64_t t = 1'000 * MS + 5 * MS;
-    fl.raw = 0.01; lo.update(tl, t);                     // first beat: hard (new reset sequence)
-    CHECK_EQ(fl.hard, 1);
-    for (int i = 1; i <= 3; ++i) { t += 500 * MS; fl.raw = std::fmod(i + 0.01, 4); lo.update(tl, t); }
-    CHECK_EQ(fl.soft, 0); CHECK_EQ(fl.hard, 1);
-    for (int i = 4; i <= 6; ++i) { t += 500 * MS; fl.raw = std::fmod(i + 0.3, 4); lo.update(tl, t); }
-    CHECK(fl.soft >= 1); CHECK_EQ(fl.hard, 1);
-}
-
-TEST_CASE("O-T13 link tempo throttle") {
-    FakeLink fl; LinkOutput lo(fl); auto tl = mkTl(120);
-    lo.update(tl, 1'000 * MS); tl.bpm = 120.5; lo.update(tl, 1'100 * MS);
-    CHECK_EQ(fl.tempoCalls, 1);
-    lo.update(tl, 2'200 * MS);
-    CHECK_EQ(fl.tempoCalls, 2);
-}
-
-#include "shunt/out/OscInput.h"
-#include "shunt/out/RawMidiSink.h"
-#include <cstdio>
-#include <fcntl.h>
-#include <unistd.h>
-
-TEST_CASE("O-T14 osc decode roundtrip, bundles and malformed input") {
-    OscMessage m{"/shunt/baroffset", {int32_t(2)}};
-    auto d = decodeOsc(encodeOsc(m).data(), encodeOsc(m).size());
-    REQUIRE(d.has_value());
-    CHECK(d->address == m.address && std::get<int32_t>(d->args[0]) == 2);
-    OscMessage m2{"/x", {1.5f, std::string("abc"), int32_t(-7)}};
-    const auto e2 = encodeOsc(m2);
-    auto d2 = decodeOsc(e2.data(), e2.size());
-    REQUIRE(d2.has_value() && d2->args.size() == 3);
-    CHECK_NEAR(std::get<float>(d2->args[0]), 1.5, 1e-6);
-    CHECK(std::get<std::string>(d2->args[1]) == "abc");
-    CHECK_EQ(int(std::get<int32_t>(d2->args[2])), -7);
-    const auto b = encodeOscBundle({m, m2});
-    CHECK_EQ(decodeOscPacket(b.data(), b.size()).size(), size_t(2));
-    // truncated and garbage input never crashes and yields nothing
-    for (size_t n = 0; n < e2.size(); ++n) { auto t = decodeOsc(e2.data(), n); if (n % 4 || n < 8) CHECK(!t || n >= 4); }
-    uint32_t seed = 7;
-    for (int i = 0; i < 5000; ++i) {
-        uint8_t buf[64]; for (auto& x : buf) { seed = seed * 1664525u + 1013904223u; x = uint8_t(seed >> 24); }
-        if (i & 1) { buf[0] = '/'; }
-        (void)decodeOscPacket(buf, size_t(i % 65));
-    }
-}
-
-TEST_CASE("O-T15 osc control dispatch validates ranges") {
-    int bar = -1; int beat = -1;
-    OscControl c; c.setBarOffset = [&](int v) { bar = v; }; c.setBeatOnly = [&](bool v) { beat = v; };
-    CHECK_EQ(dispatchOscControl({{"/shunt/baroffset", {int32_t(3)}}, {"/shunt/beatonly", {int32_t(1)}}}, c), size_t(2));
-    CHECK_EQ(bar, 3); CHECK_EQ(beat, 1);
-    CHECK_EQ(dispatchOscControl({{"/shunt/baroffset", {int32_t(4)}}, {"/shunt/beatonly", {int32_t(2)}},
-                                 {"/shunt/baroffset", {1.0f}}, {"/other", {int32_t(1)}}}, c), size_t(0));
-    CHECK_EQ(bar, 3);
-}
-
-TEST_CASE("O-T16 raw midi sink writes bytes to a file") {
-    char path[] = "/tmp/shunt_midiXXXXXX";
-    const int fd = mkstemp(path); REQUIRE(fd >= 0); ::close(fd);
+TEST_CASE("O-T3 pause: keep running, or Stop then Continue") {
     {
-        RawMidiSink sink; REQUIRE(sink.open(path));
-        const uint8_t a[] = {0xFA}, b[] = {0xF2, 0x04, 0x00};
-        sink.send(0, a, 1); sink.send(0, b, 3);
+        MidiClockGenerator g;
+        auto tl = tl120();
+        auto a = run(g, tl, 1'000'000'000, 3'000'000'000);
+        tl.playing = false;
+        auto b = run(g, tl, 3'000'000'000, 5'000'000'000);
+        CHECK_EQ(count(b, 0xFC), 0u);
+        CHECK(count(b, 0xF8) > 90u);
+        (void)a;
     }
-    FILE* f = std::fopen(path, "rb"); REQUIRE(f != nullptr);
-    uint8_t buf[8]; const size_t n = std::fread(buf, 1, 8, f); std::fclose(f); std::remove(path);
-    CHECK_EQ(n, size_t(4)); CHECK_EQ(int(buf[0]), 0xFA); CHECK_EQ(int(buf[3]), 0x00);
-    RawMidiSink bad; CHECK(!bad.open("/nonexistent/dev")); CHECK(!bad.lastError().empty());
+    {
+        MidiClockOptions o; o.pause = MidiClockOptions::Stop;
+        MidiClockGenerator g; g.setOptions(o);
+        auto tl = tl120();
+        run(g, tl, 1'000'000'000, 3'000'000'000);
+        tl.playing = false;
+        auto b = run(g, tl, 3'000'000'000, 5'000'000'000);
+        CHECK_EQ(count(b, 0xFC), 1u);
+        CHECK_EQ(count(b, 0xF8), 0u);
+        tl.playing = true;
+        auto c = run(g, tl, 5'000'000'000, 7'000'000'000);
+        CHECK_EQ(count(c, 0xFB), 1u);
+        CHECK_EQ(count(c, 0xFA), 0u);
+        CHECK(count(c, 0xF8) > 80u);
+    }
+}
+
+TEST_CASE("O-T4 reset resyncs without Start unless enabled; SPP when enabled") {
+    MidiClockOptions o; o.startOnReset = false; o.sppOnReset = true;
+    MidiClockGenerator g; g.setOptions(o);
+    auto tl = tl120();
+    run(g, tl, 1'000'000'000, 3'000'000'000);
+    tl.resetSequence = 2; tl.beatOriginNs = 3'250'000'000; tl.beatIndex = 20; tl.beatInBar = 2;
+    auto b = run(g, tl, 3'000'000'000, 5'000'000'000);
+    CHECK_EQ(count(b, 0xFA), 0u);
+    CHECK_EQ(count(b, 0xF2), 1u);
+    CHECK(count(b, 0xF8) > 80u);
+    // ticks stay on the new phase grid
+    for (auto& m : b) if (m.bytes[0] == 0xF8) {
+        const double ticks = (double(m.timeNs) - 3.25e9) / (1e9 / 48.0);
+        CHECK_NEAR(ticks, std::round(ticks), 0.01);
+    }
+}
+
+namespace {
+struct MockLink : ILinkSession {
+    double bpm = 0; double phase = 0;   // link beat at t = phase + (t / 0.5 s)
+    int soft = 0, hard = 0, tempoSets = 0;
+    void enable(bool) override {}
+    size_t numPeers() const override { return 2; }
+    void setTempo(double b, int64_t) override { bpm = b; ++tempoSets; }
+    double beatAtTime(int64_t t, double) const override { return phase + double(t) / 5e8; }
+    void requestBeatAtTime(double, int64_t, double) override { ++soft; }
+    void forceBeatAtTime(double, int64_t, double) override { ++hard; }
+};
+}
+
+TEST_CASE("O-T5 Link logic: quantum, tempo deadband, soft and hard correction") {
+    auto mock = std::make_unique<MockLink>();
+    MockLink* m = mock.get();
+    LinkOutput lo(std::move(mock));
+    lo.setEnabled(true);
+    auto tl = tl120();                      // beatInBar 3 at index 10 => link beat should be 2 mod 4 at t=1 s
+    m->phase = 0.0;                         // link beat at 1 s = 2.0 -> in phase (index 10 -> inBar 3 -> target 2)
+    for (int64_t now = 1'000'000'000; now < 6'000'000'000; now += 1'000'000) lo.poll(now, tl);
+    CHECK_EQ(m->tempoSets, 1);
+    CHECK_NEAR(m->bpm, 120.0, 1e-9);
+    CHECK_EQ(m->hard, 1);                   // initial alignment on first lock (resetSequence 0 -> 1)
+    CHECK_EQ(m->soft, 0);
+    CHECK_NEAR(lo.lastQuantum(), 4.0, 1e-9);
+    // 10 ms (0.02 beat) error persists -> soft correction after two beats
+    m->phase = 0.02;
+    for (int64_t now = 6'000'000'000; now < 9'000'000'000; now += 1'000'000) lo.poll(now, tl);
+    CHECK(m->soft >= 1);
+    CHECK_EQ(m->hard, 1);
+    // reset -> hard
+    tl.resetSequence = 2;
+    for (int64_t now = 9'000'000'000; now < 11'000'000'000; now += 1'000'000) lo.poll(now, tl);
+    CHECK(m->hard >= 2);
+    // beat-only => quantum 1
+    auto tl2 = tl120(false);
+    LinkOutput lo2(std::make_unique<MockLink>());
+    lo2.setEnabled(true);
+    lo2.poll(1'000'000'000, tl2);
+    CHECK_NEAR(lo2.lastQuantum(), 1.0, 1e-9);
+}
+
+TEST_CASE("O-T5b Link without SDK reports unavailable") {
+    LinkOutput lo;
+    lo.setEnabled(true);
+    CHECK(!lo.available());
+    CHECK(lo.error().find("SDK") != std::string::npos);
+}
+
+TEST_CASE("O-T6 OSC profiles") {
+    auto run = [](OscProfile p) {
+        OscOutput o;
+        std::vector<std::vector<uint8_t>> sent;
+        o.setSink([&](const std::vector<uint8_t>& b) { sent.push_back(b); });
+        OscSettings s; s.enabled = true; s.profile = p;
+        o.configure(s);
+        auto tl = tl120();
+        for (int64_t now = 1'000'000'000; now < 4'000'000'000; now += 1'000'000) o.poll(now, tl);
+        return sent;
+    };
+    auto contains = [](const std::vector<std::vector<uint8_t>>& v, const std::string& addr) {
+        for (auto& b : v) if (std::string(reinterpret_cast<const char*>(b.data())) == addr) return true;
+        return false;
+    };
+    auto gen = run(OscProfile::Generic);
+    CHECK(contains(gen, "/shunt/bpm"));
+    CHECK(contains(gen, "/shunt/beat"));
+    CHECK(contains(gen, "/shunt/bar"));
+    auto res = run(OscProfile::Resolume);
+    CHECK(contains(res, "/composition/tempocontroller/tempo"));
+    CHECK(contains(res, "/composition/tempocontroller/resync"));
+    auto ma = run(OscProfile::GrandMA3);
+    REQUIRE(!ma.empty());
+    std::string payload(reinterpret_cast<const char*>(ma[0].data()) + 16, 24);
+    CHECK(payload.find("Master 3.1 At BPM 120.00") != std::string::npos);
+    // Resolume normalisation (120-20)/480
+    const auto& t = res[0];
+    uint32_t u = (uint32_t(t[t.size() - 4]) << 24) | (uint32_t(t[t.size() - 3]) << 16) | (uint32_t(t[t.size() - 2]) << 8) | t[t.size() - 1];
+    float f; std::memcpy(&f, &u, 4);
+    CHECK_NEAR(double(f), 100.0 / 480.0, 1e-6);
+    // QLab events
+    OscOutput q; std::vector<std::string> addrs;
+    q.setSink([&](const std::vector<uint8_t>& b) { addrs.emplace_back(reinterpret_cast<const char*>(b.data())); });
+    OscSettings qs; qs.enabled = true; qs.profile = OscProfile::QLab; qs.qlabMasterCue = 7;
+    q.configure(qs);
+    q.onMasterChanged(2);
+    REQUIRE(addrs.size() == 1u);
+    CHECK(addrs[0] == "/cue/7/start");
 }

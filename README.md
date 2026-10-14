@@ -14,7 +14,22 @@ appliance ("Shunt Box"). C++17, JUCE 8, CMake, same toolchain as
 [Vivisect](https://github.com/djshellshoxxx/faultline) and
 [Pacemaker](https://github.com/djshellshoxxx/pacemaker).
 
-Status: protocol core, clock engine and output engine implemented; platform sinks and apps next.
+Status: protocol core, clock engine, MIDI clock, OSC, Link logic (SDK binding
+pending licence), tracklist logger and a web UI are implemented and tested.
+The JUCE desktop shell and the Box image are next.
+
+## Try it
+
+```sh
+cmake -S . -B build -G Ninja && cmake --build build
+ctest --test-dir build --output-on-failure
+./build/shuntsim --dest 127.0.0.1 --duration 600 &      # fake booth on loopback
+./build/shunt_headless --addr 127.0.0.1                 # then open http://localhost:8080/
+```
+
+On a real network use `--iface eth0` (the interface wired to the players).
+Pages: Live, Outputs, Tracklist, Phase scope, Compatibility, Diagnostics;
+press `S` for stage mode. `/overlay` is an OBS browser source.
 
 ## Documents
 
@@ -24,17 +39,15 @@ Status: protocol core, clock engine and output engine implemented; platform sink
 - `docs/specs/ES-02-packet-formats.md` — packet engineering spec
 - `docs/specs/ES-03-clock-engine.md` — timing engineering spec
 - `docs/specs/ES-04-product.md` — product engineering spec
-- `docs/specs/ES-05-outputs.md` — output engine (MIDI clock, OSC, Link adapter)
 - `docs/specs/RS-*.md` — regular specs: outputs, appliance, desktop app and
   UX, tracklist logging, testing and CI, licensing and legal
+- `docs/specs/RS-07-outputs-core-and-web-ui.md` — outputs, core runtime, HTTP API, web UI
+- `docs/specs/FS-*.md` — feature specs FS-00 (extension points) to FS-09, with test and fixture rules; build order and merge rules in `docs/BUILD-PLAN-FEATURES.md`
 - `docs/DIFFERENTIATION.md` — what makes Shunt different, ranked extra
   features
 - `docs/PROJECT-PLAN.md` — phases, checklist, risks
 
 ## Legal
-
-Copyright (c) 2026 djshellshoxxx. All rights reserved (see `LICENSE`, `LEGAL.md`).
-
 
 Shunt works with PRO DJ LINK compatible players and mixers from AlphaTheta /
 Pioneer DJ. PRO DJ LINK, rekordbox and Pioneer DJ are trademarks of their

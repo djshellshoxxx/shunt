@@ -23,14 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross toolchain and QEMU
+      - name: Install cross toolchain
         run: sudo apt-get update && sudo apt-get install -y ninja-build g++-aarch64-linux-gnu qemu-user
       - name: Configure
         run: >
           cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64
-          -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
-          -DCMAKE_EXE_LINKER_FLAGS=-static
+          -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_EXE_LINKER_FLAGS=-static
       - name: Build
         run: cmake --build build-arm
       - name: Unit tests under QEMU
