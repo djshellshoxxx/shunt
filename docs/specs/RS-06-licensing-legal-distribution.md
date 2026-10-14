@@ -36,6 +36,10 @@ packets in Follow mode and nothing in Passive mode. NFS metadata is off by
 default and labelled. This is stated on the compatibility page and in the
 venue documentation, with reference to AlphaTheta's 2025 advisory.
 
+## Source licence
+
+Shunt source is proprietary: all rights reserved (`LICENSE`). No GPL or EPL code is incorporated; Ableton Link is used under a separate licence from Ableton.
+
 ## Product licence and pricing
 
 Perpetual per-user key file, 3 machines; the Box image is licensed per

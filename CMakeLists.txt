@@ -35,7 +35,7 @@ add_library(shunt_log STATIC log/src/Tracklist.cpp)
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
 # ---- shunt_out: MIDI clock, OSC, Link adapter (no drivers; sinks injected)
-add_library(shunt_out STATIC out/src/MidiClock.cpp out/src/Osc.cpp out/src/LinkOutput.cpp)
+add_library(shunt_out STATIC out/src/MidiClock.cpp out/src/Osc.cpp out/src/LinkOutput.cpp out/src/OscInput.cpp out/src/RawMidiSink.cpp)
 target_include_directories(shunt_out PUBLIC out/include)
 target_link_libraries(shunt_out PUBLIC shunt_clock shunt_net)
 

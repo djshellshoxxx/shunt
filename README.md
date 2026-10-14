@@ -33,6 +33,9 @@ Status: protocol core, clock engine and output engine implemented; platform sink
 
 ## Legal
 
+Copyright (c) 2026 djshellshoxxx. All rights reserved (see `LICENSE`, `LEGAL.md`).
+
+
 Shunt works with PRO DJ LINK compatible players and mixers from AlphaTheta /
 Pioneer DJ. PRO DJ LINK, rekordbox and Pioneer DJ are trademarks of their
 respective owners. Shunt is an independent product and is not affiliated

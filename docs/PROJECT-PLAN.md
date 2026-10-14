@@ -9,8 +9,8 @@ current; tick boxes as work lands.
 - [x] Engineering specs ES-01 to ES-04; regular specs RS-01 to RS-06
 - [x] CMake skeleton: `shunt_net`, `shunt_clock`, `shunt_log` (plain C++17, no JUCE), `ShuntTests` (self-contained test header instead of Catch2), `shuntsim`
 - [x] CI: Linux build and unit tests on every PR (`ci.yml`)
-- [ ] CI: aarch64 cross job
-- [ ] Legal wording file (`LEGAL.md`) with the ES-04 section 6 text
+- [x] CI: aarch64 cross job (static build, unit tests under QEMU user mode)
+- [x] Legal wording file (`LEGAL.md`) and `LICENSE` (all rights reserved)
 - [ ] Ableton Link licence request (joint with Pacemaker)
 - [ ] Obtain the two dysentery captures into `Tests/captures/` with a manifest
 
@@ -30,8 +30,8 @@ current; tick boxes as work lands.
 - [x] Estimator, reset rules, bar phase, state machine (ES-03); tests C-T1 to C-T10
 - [x] Output engine `shunt_out` written to ES-05 (self-contained; Pacemaker extraction no longer needed)
 - [x] Link adapter with quantum 4/1 and soft/hard phase policy (`ILinkBackend`; real SDK backend pending licence); tests O-T11 to O-T13
-- [x] MIDI clock generator with pause/start/SPP options (O-T1 to O-T6); [ ] platform sinks (CoreMIDI, ALSA, WinMM, virtual port)
-- [x] OSC encoder, output and profiles (O-T7 to O-T10); [ ] OSC input
+- [x] MIDI clock generator with pause/start/SPP options (O-T1 to O-T6); [x] raw device sink for ALSA/UART (O-T16); [ ] CoreMIDI, WinMM, virtual port (need JUCE or platform SDKs)
+- [x] OSC encoder, output and profiles (O-T7 to O-T10); [x] OSC input decoder and control dispatch (O-T14, O-T15)
 - [ ] Latency offset and phase scope data
 
 ## Phase 3: Desktop app (3 to 4 weeks)

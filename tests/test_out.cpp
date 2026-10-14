@@ -204,3 +204,57 @@ TEST_CASE("O-T13 link tempo throttle") {
     lo.update(tl, 2'200 * MS);
     CHECK_EQ(fl.tempoCalls, 2);
 }
+
+#include "shunt/out/OscInput.h"
+#include "shunt/out/RawMidiSink.h"
+#include <cstdio>
+#include <fcntl.h>
+#include <unistd.h>
+
+TEST_CASE("O-T14 osc decode roundtrip, bundles and malformed input") {
+    OscMessage m{"/shunt/baroffset", {int32_t(2)}};
+    auto d = decodeOsc(encodeOsc(m).data(), encodeOsc(m).size());
+    REQUIRE(d.has_value());
+    CHECK(d->address == m.address && std::get<int32_t>(d->args[0]) == 2);
+    OscMessage m2{"/x", {1.5f, std::string("abc"), int32_t(-7)}};
+    const auto e2 = encodeOsc(m2);
+    auto d2 = decodeOsc(e2.data(), e2.size());
+    REQUIRE(d2.has_value() && d2->args.size() == 3);
+    CHECK_NEAR(std::get<float>(d2->args[0]), 1.5, 1e-6);
+    CHECK(std::get<std::string>(d2->args[1]) == "abc");
+    CHECK_EQ(int(std::get<int32_t>(d2->args[2])), -7);
+    const auto b = encodeOscBundle({m, m2});
+    CHECK_EQ(decodeOscPacket(b.data(), b.size()).size(), size_t(2));
+    // truncated and garbage input never crashes and yields nothing
+    for (size_t n = 0; n < e2.size(); ++n) { auto t = decodeOsc(e2.data(), n); if (n % 4 || n < 8) CHECK(!t || n >= 4); }
+    uint32_t seed = 7;
+    for (int i = 0; i < 5000; ++i) {
+        uint8_t buf[64]; for (auto& x : buf) { seed = seed * 1664525u + 1013904223u; x = uint8_t(seed >> 24); }
+        if (i & 1) { buf[0] = '/'; }
+        (void)decodeOscPacket(buf, size_t(i % 65));
+    }
+}
+
+TEST_CASE("O-T15 osc control dispatch validates ranges") {
+    int bar = -1; int beat = -1;
+    OscControl c; c.setBarOffset = [&](int v) { bar = v; }; c.setBeatOnly = [&](bool v) { beat = v; };
+    CHECK_EQ(dispatchOscControl({{"/shunt/baroffset", {int32_t(3)}}, {"/shunt/beatonly", {int32_t(1)}}}, c), size_t(2));
+    CHECK_EQ(bar, 3); CHECK_EQ(beat, 1);
+    CHECK_EQ(dispatchOscControl({{"/shunt/baroffset", {int32_t(4)}}, {"/shunt/beatonly", {int32_t(2)}},
+                                 {"/shunt/baroffset", {1.0f}}, {"/other", {int32_t(1)}}}, c), size_t(0));
+    CHECK_EQ(bar, 3);
+}
+
+TEST_CASE("O-T16 raw midi sink writes bytes to a file") {
+    char path[] = "/tmp/shunt_midiXXXXXX";
+    const int fd = mkstemp(path); REQUIRE(fd >= 0); ::close(fd);
+    {
+        RawMidiSink sink; REQUIRE(sink.open(path));
+        const uint8_t a[] = {0xFA}, b[] = {0xF2, 0x04, 0x00};
+        sink.send(0, a, 1); sink.send(0, b, 3);
+    }
+    FILE* f = std::fopen(path, "rb"); REQUIRE(f != nullptr);
+    uint8_t buf[8]; const size_t n = std::fread(buf, 1, 8, f); std::fclose(f); std::remove(path);
+    CHECK_EQ(n, size_t(4)); CHECK_EQ(int(buf[0]), 0xFA); CHECK_EQ(int(buf[3]), 0x00);
+    RawMidiSink bad; CHECK(!bad.open("/nonexistent/dev")); CHECK(!bad.lastError().empty());
+}
