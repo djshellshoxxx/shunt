@@ -33,6 +33,8 @@ struct Timeline {
         return bpm > 0 ? beatOriginNs + int64_t(double(k - beatIndex) * 60e9 / bpm) : beatOriginNs;
     }
     double periodNs() const { return bpm > 0 ? 60e9 / bpm : 0; }
+    // Outputs ignore timelines outside a sane musical range (also bounds message rates).
+    bool usable() const { return bpm >= 20.0 && bpm <= 400.0; }
 };
 
 struct PlayerTrack {
