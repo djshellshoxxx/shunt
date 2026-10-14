@@ -36,12 +36,15 @@ current; tick boxes as work lands.
 - [x] OSC output with Shunt messages and profiles
 - [x] Latency offset and phase scope data
 
+- [x] dbserver metadata client with fake-player tests (`shunt_meta`), wired into `Core` for rekordbox tracks when Shunt holds a player number 1 to 6
+- [x] Streaming rekordbox XML reader (50k tracks in about 100 ms) in `shunt_meta`; [ ] switch `Core` import to it
+
 ## Phase 3: Desktop app (3 to 4 weeks)
 
 - [x] Main screen per ES-04 section 5 and stage mode as an embedded web UI (RS-07 section 9)
 - [ ] JUCE shell: tray, auto-start, WebView, native MIDI ports
 - [x] First-run interface and mode picker with firewall guidance
-- [ ] Windows installer firewall rule
+- [x] Windows installer (NSIS script, firewall rule) and MinGW toolchain/build script imported from the `eager-mayer` branch; [ ] not yet built in CI (needs the JUCE desktop app target)
 - [x] Tracklist logger, exporters, NDJSON persistence and `/overlay` page
 - [x] rekordbox XML import for titles and artists (RS-07 section 11)
 - [x] Compatibility page; diagnostics page; record toggle

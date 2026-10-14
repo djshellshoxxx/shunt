@@ -101,6 +101,7 @@ void Core::stop() {
     if (!running_.exchange(false)) return;
     if (thread_.joinable()) thread_.join();
     outputs_.stop();
+    db_.stop();   // join the worker before taking mu_: its callbacks lock mu_
     std::lock_guard<std::mutex> lk(mu_);
     session_.finish(wallNowMs());
     appendTracklistFilesLocked();
@@ -169,6 +170,7 @@ void Core::netLoop() {
         counters_ = st->counters();
         claimState_ = claimName(st->claim().state());
         claimNumber_ = st->claim().number();
+        db_.setOwnNumber(uint8_t(claimNumber_ >= 1 && claimNumber_ <= 6 ? claimNumber_ : 0));
         appendTracklistFilesLocked();
     }
 }
@@ -195,6 +197,17 @@ void Core::handle(const net::Event& ev, int64_t wallMs) {
         const bool trackChanged = s.rekordboxId != l.trackId || s.slot != l.slot;
         l.trackId = s.rekordboxId; l.slot = s.slot; l.trackType = s.trackType;
         session_.onStatus(ev.device, s, wallMs);
+        if (trackChanged && s.rekordboxId && s.trackType == 1 && !meta_.count(s.rekordboxId)) {
+            const uint32_t id = s.rekordboxId;
+            db_.request(ev.srcIp, ev.device, s.slot, s.trackType, id, [this, id](bool ok, const meta::TrackMetadata& m) {
+                if (!ok) return;
+                log::TrackMeta t;
+                t.title = m.title; t.artist = m.artist; t.album = m.album; t.genre = m.genre; t.key = m.key;
+                t.bpm = m.bpm; t.durationS = m.durationS;
+                std::lock_guard<std::mutex> lk(mu_);
+                meta_[id] = t;
+            });
+        }
         if (trackChanged && s.rekordboxId) outputs_.push({out::OutputEvent::Track, ev.device, s.rekordboxId, false, "", ""});
         if (ev.device == engine_.master() && (s.rekordboxId != masterTrackId_ || s.slot != masterTrackSlot_)) {
             masterTrackId_ = s.rekordboxId; masterTrackSlot_ = s.slot;

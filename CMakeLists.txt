@@ -34,6 +34,15 @@ target_include_directories(shunt_clock PUBLIC clock/include net/include)
 add_library(shunt_log STATIC log/src/Tracklist.cpp log/src/RekordboxXml.cpp)
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
+# ---- shunt_meta: dbserver client and streaming rekordbox XML reader (RS-04)
+file(GLOB SHUNT_META_SOURCES CONFIGURE_DEPENDS meta/src/*.cpp)
+add_library(shunt_meta STATIC ${SHUNT_META_SOURCES})
+target_include_directories(shunt_meta PUBLIC meta/include)
+target_link_libraries(shunt_meta PUBLIC Threads::Threads)
+if(WIN32)
+  target_link_libraries(shunt_meta PUBLIC ws2_32)
+endif()
+
 # ---- shunt_out: OSC, MIDI clock, Link logic, output manager (no JUCE, no third-party code)
 add_library(shunt_out STATIC
   out/src/Osc.cpp
@@ -70,7 +79,7 @@ add_library(shunt_app STATIC
   ${UI_SOURCES}
 )
 target_include_directories(shunt_app PUBLIC app/include)
-target_link_libraries(shunt_app PUBLIC shunt_net shunt_clock shunt_log shunt_out Threads::Threads)
+target_link_libraries(shunt_app PUBLIC shunt_net shunt_clock shunt_log shunt_out shunt_meta Threads::Threads)
 
 # ---- tools
 add_executable(shunt_headless tools/shunt_headless/main.cpp)
@@ -100,3 +109,10 @@ add_test(NAME ShuntTests COMMAND ShuntTests)
 add_test(NAME shuntsim_localhost
   COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
 set_tests_properties(shuntsim_localhost PROPERTIES TIMEOUT 60)
+
+# Metadata tests are a separate binary (fake dbserver on loopback).
+file(GLOB SHUNT_META_TESTS CONFIGURE_DEPENDS tests/meta/*.cpp)
+add_executable(ShuntMetaTests tests/main.cpp ${SHUNT_META_TESTS})
+target_include_directories(ShuntMetaTests PRIVATE tests)
+target_link_libraries(ShuntMetaTests PRIVATE shunt_meta)
+add_test(NAME ShuntMetaTests COMMAND ShuntMetaTests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)

@@ -31,6 +31,8 @@ On a real network use `--iface eth0` (the interface wired to the players).
 Pages: Live, Outputs, Tracklist, Phase scope, Compatibility, Diagnostics;
 press `S` for stage mode. `/overlay` is an OBS browser source.
 
+Copyright and licence: all rights reserved (`LICENSE`).
+
 ## Documents
 
 - `docs/research/` — deep research notes with sources (`00-index.md`

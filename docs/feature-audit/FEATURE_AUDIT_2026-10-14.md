@@ -7,21 +7,19 @@ app code, releases or credentials touched.
 
 ## 1. Headline findings
 
-1. **Three divergent branches duplicate work (P0, process).** All branch from `8fd1814`:
-   - PR #1 (`claude/zealous-turing-knnajn`, open draft): `shunt_out` (MIDI, OSC, Link logic, output manager),
-     `shunt_app` (JSON, settings, core runtime, HTTP/WebSocket, embedded web UI), `shunt_headless`,
-     rekordbox XML import, OSC input, `LEGAL.md`, aarch64 CI, specs RS-07 and FS-00 to FS-09. 52 test cases.
-   - `claude/eager-mayer-kr1zn1` (no PR): restructured per-module CMake, dbserver metadata client, rekordbox XML
-     reader, Windows installer and CI matrix, release workflow, core interface headers.
-   - PR #2 (this branch): `shunt_out` (MIDI clock, OSC, Link adapter, OSC input, raw MIDI sink), ES-05, `LICENSE`.
-   PR #2 overlaps PR #1 (same library name `shunt_out`, same file names `out/*/Osc.*`, `LEGAL.md`, aarch64 job,
-   OSC input) and will conflict. None of the three is merged. **Decision needed:** pick one output
-   implementation (PR #1 is the more complete) and rebase or close the others.
-2. **On the default branch the outputs are not wired to any entry point (P0).** Only `shunt_cli` and
-   `shuntsim` exist (`tools/`); neither constructs an output. The user-facing product (app, web UI, headless)
-   exists only in unmerged PR #1.
-3. **Licence is all rights reserved** (`LICENSE`, this branch only). PR #1 and `eager-mayer` add `LEGAL.md`
-   without that licence line; reconcile on merge.
+**Update, after consolidation.** The first version of this audit (against `371eeba`) found three divergent
+branches with duplicated work. At the owner's request ("whatever is best, features from both") they were
+merged on this branch: PR #1 (`zealous-turing-knnajn`) is the base for outputs, core runtime, web UI and
+headless app; this branch adds `LICENSE`, the BPM sanity guard (`Timeline::usable()`), the QEMU test run and
+the parser fuzz test; the `eager-mayer` branch contributes `shunt_meta` (dbserver client, streaming XML
+reader, fake-player tests) wired into `Core`, plus the Windows installer, MinGW toolchain and docs.
+Duplicate implementations from the earlier PR #2 (`MidiClock`, `LinkOutput`, `OscInput`, `RawMidiSink`, ES-05)
+were dropped in favour of PR #1's equivalents. The matrix below reflects the first pass; rows changed by
+the consolidation are listed in section 6.
+
+1. **Open (P0):** `eager-mayer` CI/release workflows were not imported: they target a JUCE desktop
+   target that exists on no branch.
+2. **Licence** is all rights reserved (`LICENSE`); `LEGAL.md` carries both the licence line and the required wording.
 
 ## 2. Method and evidence
 
@@ -113,3 +111,18 @@ Classes: **V** verified complete, **U** implemented, untested for the real world
   Their claims (52 tests, jitter figures) are reported as stated by their PR descriptions, not reproduced.
 - Windows, macOS and the Link SDK were not exercised.
 - Unmerged PRs are not described as released; nothing in this repository is released.
+
+## 6. Changes from consolidation (rows superseded)
+
+| Matrix row | New state | Evidence |
+|---|---|---|
+| 15 bar offset memory | V | `app/src/Core.cpp` (`barOffsetMemory`, from PR #1) |
+| 17, 20, 24 MIDI clock, OSC, Link | V/U via PR #1 implementation (`out/src/Midi.cpp`, `Osc.cpp`, `Link.cpp`), tests O-T1..O-T6 | `ShuntTests` 56 cases pass |
+| 18 raw MIDI ports | U via PR #1 `Midi.cpp` | |
+| 22 OSC input | V: `OscInput` socket class bound in `Core::syncOscInput` | `app/src/Core.cpp` |
+| 28 title/artist | P: dbserver client wired in `Core` (tested only against `FakeDbServer`), XML import via PR #1 parser | `ShuntMetaTests` 13 cases, 137 checks |
+| 31-33 app, web UI, scope | V (web UI via PR #1, loopback tested A-T3); no JUCE shell | |
+| 36 installers | P: NSIS script and MinGW toolchain imported, not built in CI | `installer/`, `scripts/build-windows.sh` |
+| Test totals | `ShuntTests` 56 cases / 1571 checks, `ShuntMetaTests` 13 / 137; ctest 3 of 3; ASan+UBSan clean | |
+
+Still open: G2 is largely closed (`shunt_headless` drives outputs); G3, G4, G6, G7, G8, G13 unchanged.

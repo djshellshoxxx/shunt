@@ -4,6 +4,7 @@
 #include "shunt/app/Settings.h"
 #include "shunt/clock/ClockEngine.h"
 #include "shunt/log/RekordboxXml.h"
+#include "shunt/meta/Metadata.h"
 #include "shunt/log/Tracklist.h"
 #include "shunt/net/NetworkStack.h"
 #include "shunt/out/OutputManager.h"
@@ -85,6 +86,7 @@ private:
     size_t writtenEvents_ = 0, writtenRows_ = 0;
     std::string sessionFile_;
     log::MetaMap meta_;
+    meta::DbServerClient db_;      // dbserver lookups; callbacks run on its worker thread and take mu_
     out::OscInput oscIn_;
     int oscInPortOpen_ = 0;
     void loadMeta();
