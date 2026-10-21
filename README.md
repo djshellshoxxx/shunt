@@ -30,6 +30,22 @@ Status: early implementation. The repository contains C++17 networking, clock-en
   features
 - `docs/PROJECT-PLAN.md` — phases, checklist, risks
 
+## Build and test
+
+The root CMake build covers the portable libraries (networking, clock engine, tracklist logging), the CLI and the simulator. Checked on this snapshot (Linux): configure, build, and `ctest` with 2 of 2 tests passing (`ShuntTests`, `shuntsim_localhost`).
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The desktop app and the Raspberry Pi appliance are not part of this build (see Status).
+
+## Wiki
+
+Wiki source pages are in [docs/wiki/](docs/wiki/Home.md): developer guide, architecture rationale and codebase map.
+
 ## Legal
 
 Shunt works with PRO DJ LINK compatible players and mixers from AlphaTheta /
