@@ -14,7 +14,7 @@ appliance ("Shunt Box"). C++17, JUCE 8, CMake, same toolchain as
 [Vivisect](https://github.com/djshellshoxxx/faultline) and
 [Pacemaker](https://github.com/djshellshoxxx/pacemaker).
 
-Status: specification stage.
+Status: early implementation. The repository contains C++17 networking, clock-engine and tracklist/logging libraries, CLI and simulation tools, and test targets. The proposed desktop application, plugin integrations and Raspberry Pi appliance are not established by the current root build configuration as completed releases.
 
 ## Documents
 
