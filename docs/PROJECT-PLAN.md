@@ -12,7 +12,7 @@ current; tick boxes as work lands.
 - [x] CI: aarch64 cross build job (build only; no emulated test run)
 - [x] Legal wording file (`LEGAL.md`) with the ES-04 section 6 text
 - [ ] Ableton Link licence request (joint with Pacemaker)
-- [ ] Obtain the two dysentery captures into `Tests/captures/` with a manifest
+- [x] Obtain the dysentery captures (fetched by `tools/fetch_captures.sh`, manifest in `tests/captures/`)
 
 ## Phase 1: Protocol core (2 to 3 weeks)
 
@@ -21,7 +21,7 @@ current; tick boxes as work lands.
 - [x] Claim state machine with CDJ-3000-compatible keep-alive (ES-01 section 5); tests N-T3, N-T4
 - [x] Master tracker (ES-01 section 6); test N-T5
 - [x] pcapng writer and replayer (`shunt_cli --replay`)
-- [ ] Replay tests N-T2 (need the dysentery captures)
+- [x] Replay tests N-T2 (`ctest -R replay_`)
 - [x] ShuntSim with the scripted scenarios (RS-05)
 - [x] Socket layer with interface selection, broadcast, SO_TIMESTAMPNS, Passive mode; test N-T6
 
@@ -85,7 +85,7 @@ current; tick boxes as work lands.
 
 ## Feature wave (specs FS-00 to FS-09, plan in `docs/BUILD-PLAN-FEATURES.md`)
 
-- [ ] PR 0: extension points (FS-00) and PR T0: CI sanitizers, simulator scenarios, fixtures (FS-TEST)
+- [x] PR 0: extension points (FS-00) and PR T0: CI sanitizers, simulator scenarios, fixtures (FS-TEST)
 - [ ] FS-01 On-air routing and clock mute
 - [ ] FS-02 Key clash alarm
 - [ ] FS-03 Phrase countdown (after spike P0)

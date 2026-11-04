@@ -234,6 +234,21 @@ default 9100). Messages: `/shunt/baroffset i` (0..3), `/shunt/beatonly i`
 Tests: O-T7 OSC decode round trip and malformed input; L-T1 XML parse with
 entities and playlist references; L-T2 metadata applied to rows and exports.
 
+## 12. Extension points (FS-00)
+
+Features FS-01 to FS-09 plug into the core through the seams defined and
+documented in `docs/specs/FS-00-extension-points.md` (section 7 is the
+as-built reference): `IFeature` objects registered with
+`SHUNT_REGISTER_FEATURE` and hosted by `Core` (settings under
+`features.<id>` with deep-merge patches, `status.features.<id>`, routes
+`/api/f/<id>/...`, `GET /api/features`), a `ControlRegistry` of named actions
+(`GET /api/controls`, `POST /api/controls/<id>`, OSC `/shunt/action/<id>`),
+the `MetaStore` for track metadata, a replay seam, and a web UI split into
+`ui/index.template.html`, `ui/css/*.css` and `ui/js/*.js` that the build
+joins into the single served page (`Shunt.registerPage`,
+`Shunt.registerWidget`). Feature routes and settings are specified in each
+feature's own spec, not here.
+
 ## Decision record
 
 **Web UI instead of a JUCE-only GUI for the first release.** One UI serves

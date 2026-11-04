@@ -123,11 +123,20 @@ constexpr size_t kMaxBody = 64u << 20;
 const char* statusText(int s) {
     switch (s) {
     case 200: return "OK";
+    case 201: return "Created";
+    case 204: return "No Content";
     case 400: return "Bad Request";
+    case 401: return "Unauthorized";
+    case 403: return "Forbidden";
     case 404: return "Not Found";
     case 405: return "Method Not Allowed";
+    case 409: return "Conflict";
     case 413: return "Payload Too Large";
+    case 415: return "Unsupported Media Type";
+    case 422: return "Unprocessable Entity";
+    case 429: return "Too Many Requests";
     case 500: return "Internal Server Error";
+    case 503: return "Service Unavailable";
     default: return "OK";
     }
 }

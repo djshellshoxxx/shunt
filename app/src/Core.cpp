@@ -1,11 +1,11 @@
+// Core runtime (RS-07 section 7). Feature host and replay seam live in CoreFeatures.cpp (FS-00).
 #include "shunt/app/Core.h"
+#include "CoreInternal.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <sys/stat.h>
-#include <fstream>
-#include <sstream>
 #include <unistd.h>
 
 namespace shunt::app {
@@ -66,13 +66,19 @@ Core::Core(Settings s, std::string configPath, std::string dataDir)
     outputs_.configure(settings_.outputs);
     startNs_ = net::monotonicNowNs();
     sessionFile_ = dataDir_ + "/tracklists/session-" + stamp(wallNowMs()) + ".ndjson";
+    host_ = std::make_unique<HostImpl>(*this);
+    registerControls();
 }
 
 Core::~Core() { stop(); }
 
 clock::Timeline Core::timeline() {
     std::lock_guard<std::mutex> lk(mu_);
-    return tl_;
+    return outputsEnabled_ ? tl_ : clock::Timeline{};
+}
+
+void Core::pushOutputLocked(const out::OutputEvent& e) {
+    if (outputsEnabled_) outputs_.push(e);
 }
 
 void Core::applyEngineConfig() {
@@ -88,7 +94,8 @@ bool Core::start(std::string* error) {
     if (running_.exchange(true)) return true;
     mkdirs(dataDir_ + "/tracklists");
     mkdirs(dataDir_ + "/captures");
-    loadMeta();
+    meta_.load(dataDir_ + "/rekordbox-meta.json");
+    createFeatures();
     syncOscInput();
     buildStack();
     if (!stackUp_ && error) *error = stackError_;
@@ -101,8 +108,10 @@ void Core::stop() {
     if (!running_.exchange(false)) return;
     if (thread_.joinable()) thread_.join();
     outputs_.stop();
-    db_.stop();   // join the worker before taking mu_: its callbacks lock mu_
+    db_.stop();   // join the worker before taking mu_
+    shutdownFeatures();
     std::lock_guard<std::mutex> lk(mu_);
+    if (replay_) leaveReplayLocked();
     session_.finish(wallNowMs());
     appendTracklistFilesLocked();
     if (stack_) stack_->stop();
@@ -146,22 +155,51 @@ void Core::buildStack() {
     stackUp_ = true;
 }
 
+void Core::onOsc(const out::OscMessage& m) {
+    static const std::string kAction = "/shunt/action/";
+    if (m.address.compare(0, kAction.size(), kAction) == 0) {   // FS-00 section 3: /shunt/action/<id> [f|i]
+        double v = 1.0;
+        if (!m.args.empty()) v = m.args[0].type == 'f' ? double(m.args[0].f) : m.args[0].type == 'i' ? double(m.args[0].i) : 1.0;
+        controls_.invoke(m.address.substr(kAction.size()), v);
+        return;
+    }
+    if (m.args.empty() || m.args[0].type != 'i') return;
+    if (m.address == "/shunt/baroffset") setBarOffset(m.args[0].i);
+    else if (m.address == "/shunt/beatonly") setBeatOnly(m.args[0].i != 0);
+}
+
 void Core::netLoop() {
     while (running_) {
+        bool replaying;
+        { std::lock_guard<std::mutex> lk(mu_); replaying = replay_ != nullptr; }
+        if (replaying) {                   // FS-00 replay seam: no live stack, the hooks feed datagrams
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            oscIn_.poll([this](const out::OscMessage& m) { onOsc(m); });
+            const int64_t now = net::monotonicNowNs();
+            const int64_t wall = wallNowMs();
+            std::lock_guard<std::mutex> lk(mu_);
+            CoreLockedScope locked;
+            replayPassLocked(now, wall);
+            continue;
+        }
         if (restart_.exchange(false)) buildStack();
         net::NetworkStack* st;
         { std::lock_guard<std::mutex> lk(mu_); st = stack_.get(); }
-        if (!st) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); continue; }
+        if (!st) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            oscIn_.poll([this](const out::OscMessage& m) { onOsc(m); });   // control works without a network too
+            std::lock_guard<std::mutex> lk(mu_);
+            CoreLockedScope locked;
+            featuresOnTickLocked(net::monotonicNowNs(), wallNowMs());
+            continue;
+        }
         st->poll(5);                       // only this thread touches the stack while it exists
-        oscIn_.poll([this](const out::OscMessage& m) {
-            if (m.args.empty() || m.args[0].type != 'i') return;
-            if (m.address == "/shunt/baroffset") setBarOffset(m.args[0].i);
-            else if (m.address == "/shunt/beatonly") setBeatOnly(m.args[0].i != 0);
-        });
+        oscIn_.poll([this](const out::OscMessage& m) { onOsc(m); });
         const int64_t now = net::monotonicNowNs();
         const int64_t wall = wallNowMs();
         std::lock_guard<std::mutex> lk(mu_);
-        if (stack_.get() != st) continue;
+        CoreLockedScope locked;
+        if (stack_.get() != st || replay_) continue;   // replay started during poll: drop this pass
         engine_.tick(now);
         net::Event ev;
         while (st->pop(ev)) handle(ev, wall);
@@ -172,6 +210,7 @@ void Core::netLoop() {
         claimNumber_ = st->claim().number();
         db_.setOwnNumber(uint8_t(claimNumber_ >= 1 && claimNumber_ <= 6 ? claimNumber_ : 0));
         appendTracklistFilesLocked();
+        featuresOnTickLocked(now, wall);
     }
 }
 
@@ -197,18 +236,17 @@ void Core::handle(const net::Event& ev, int64_t wallMs) {
         const bool trackChanged = s.rekordboxId != l.trackId || s.slot != l.slot;
         l.trackId = s.rekordboxId; l.slot = s.slot; l.trackType = s.trackType;
         session_.onStatus(ev.device, s, wallMs);
-        if (trackChanged && s.rekordboxId && s.trackType == 1 && !meta_.count(s.rekordboxId)) {
+        if (trackChanged && s.rekordboxId && s.trackType == 1 && !replay_ && !meta_.contains(s.rekordboxId)) {
             const uint32_t id = s.rekordboxId;
             db_.request(ev.srcIp, ev.device, s.slot, s.trackType, id, [this, id](bool ok, const meta::TrackMetadata& m) {
                 if (!ok) return;
                 log::TrackMeta t;
                 t.title = m.title; t.artist = m.artist; t.album = m.album; t.genre = m.genre; t.key = m.key;
                 t.bpm = m.bpm; t.durationS = m.durationS;
-                std::lock_guard<std::mutex> lk(mu_);
-                meta_[id] = t;
+                meta_.set(id, t);
             });
         }
-        if (trackChanged && s.rekordboxId) outputs_.push({out::OutputEvent::Track, ev.device, s.rekordboxId, false, "", ""});
+        if (trackChanged && s.rekordboxId) pushOutputLocked({out::OutputEvent::Track, ev.device, s.rekordboxId, false, "", ""});
         if (ev.device == engine_.master() && (s.rekordboxId != masterTrackId_ || s.slot != masterTrackSlot_)) {
             masterTrackId_ = s.rekordboxId; masterTrackSlot_ = s.slot;
             const Json& mem = settings_.raw.get("barOffsetMemory").get(std::to_string(s.rekordboxId) + ":" + std::to_string(s.slot));
@@ -224,13 +262,13 @@ void Core::handle(const net::Event& ev, int64_t wallMs) {
         for (int i = 0; i < ev.onAir.channelCount; ++i) {
             const bool on = ev.onAir.channels[i] != 0;
             Live& d = live_[uint8_t(i + 1)];
-            if (d.onAir != on) outputs_.push({out::OutputEvent::OnAir, i + 1, 0, on, "", ""});
+            if (d.onAir != on) pushOutputLocked({out::OutputEvent::OnAir, i + 1, 0, on, "", ""});
             d.onAir = on;
         }
         session_.onOnAir(ev.onAir, wallMs);
         break;
     case net::EventType::MasterChanged:
-        outputs_.push({out::OutputEvent::Master, ev.masterChanged.to, 0, false, "", ""});
+        pushOutputLocked({out::OutputEvent::Master, ev.masterChanged.to, 0, false, "", ""});
         for (auto& kv : live_) kv.second.master = kv.first == ev.masterChanged.to;
         break;
     case net::EventType::Device:
@@ -238,9 +276,11 @@ void Core::handle(const net::Event& ev, int64_t wallMs) {
         break;
     default: break;
     }
+    featuresOnEventLocked(ev, wallMs);
 }
 
 void Core::appendTracklistFilesLocked() {
+    if (replay_) return;                   // replay rows are never written (FS-05)
     const auto& evs = session_.events();
     const auto& rows = session_.rows();
     if (writtenEvents_ >= evs.size() && writtenRows_ >= rows.size()) return;
@@ -302,13 +342,24 @@ bool Core::latencyFromScope() {
 void Core::markSetStart() { std::lock_guard<std::mutex> lk(mu_); setStartMs_ = wallNowMs(); }
 
 void Core::clearSession() {
-    std::lock_guard<std::mutex> lk(mu_);
-    session_.finish(wallNowMs());
-    appendTracklistFilesLocked();
-    session_ = log::TracklistSession();
-    writtenEvents_ = writtenRows_ = 0;
-    setStartMs_ = 0;
-    sessionFile_ = dataDir_ + "/tracklists/session-" + stamp(wallNowMs()) + ".ndjson";
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (replay_) {
+            session_ = log::TracklistSession();   // the replay session only; the live one stays parked
+        } else {
+            session_.finish(wallNowMs());
+            appendTracklistFilesLocked();
+            session_ = log::TracklistSession();
+            writtenEvents_ = writtenRows_ = 0;
+            setStartMs_ = 0;
+            sessionFile_ = dataDir_ + "/tracklists/session-" + stamp(wallNowMs()) + ".ndjson";
+        }
+    }
+    std::vector<std::function<void()>> cbs;
+    { std::lock_guard<std::mutex> lk(cbMu_); cbs = sessionCleared_; }
+    for (auto& cb : cbs) {
+        try { cb(); } catch (const std::exception& e) { std::fprintf(stderr, "session-cleared callback: %s\n", e.what()); } catch (...) {}
+    }
 }
 
 void Core::setRecording(bool on) {
@@ -319,17 +370,25 @@ void Core::setRecording(bool on) {
 bool Core::applyConfig(const Json& patch, std::string& error) {
     if (!patch.isObject()) { error = "expected an object"; return false; }
     bool restart = false;
+    std::vector<std::pair<FeatureSlot*, Json>> changed;
     {
         std::lock_guard<std::mutex> lk(mu_);
+        const Json before = settings_.raw.get("features");
         Settings next = Settings::fromJson(patch, settings_);
         restart = next.interfaceName != settings_.interfaceName || next.mode != settings_.mode || next.deviceNumber != settings_.deviceNumber;
         settings_ = next;
         applyEngineConfig();
         outputs_.configure(settings_.outputs);
+        changed = syncFeatureSettingsLocked(before);
         if (!settings_.save(configPath_, &error)) return false;
     }
     syncOscInput();
     if (restart) restart_ = true;
+    for (auto& c : changed) {              // no Core lock: features may take their own locks
+        try { c.first->f->applySettings(c.second); }
+        catch (const std::exception& e) { featureFailed(*c.first, "applySettings", e.what()); }
+        catch (...) { featureFailed(*c.first, "applySettings", "unknown exception"); }
+    }
     return true;
 }
 
@@ -446,6 +505,8 @@ Json Core::status() {
     j["counters"] = c;
     j["tracks"] = int(session_.rows().size() + session_.events().size());   // change token for the UI
     j["events"] = int(session_.events().size());
+    CoreLockedScope locked;
+    j["features"] = featuresStatusLocked();
     return j;
 }
 
@@ -455,7 +516,7 @@ Json Core::tracklist() {
     log::TracklistSession live = session_;       // include tracks still playing, without touching the real session
     live.finish(wallNowMs());
     std::vector<log::Row> viewRows = live.rows();
-    log::applyMeta(viewRows, meta_);
+    meta_.apply(viewRows);
     for (auto& r : viewRows) {
         Json o = Json::object();
         o["startedAt"] = r.startedAtMs; o["endedAt"] = r.endedAtMs; o["deck"] = int(r.deck); o["slot"] = int(r.slot);
@@ -485,7 +546,7 @@ bool Core::exportTracklist(const std::string& format, std::string& body, std::st
     log::TracklistSession copy = session_;
     copy.finish(now);
     std::vector<log::Row> rows = copy.rows();
-    log::applyMeta(rows, meta_);
+    meta_.apply(rows);
     const int64_t setStart = setStartMs_ ? setStartMs_ : (rows.empty() ? now : rows.front().startedAtMs);
     const std::string base = "shunt-tracklist-" + stamp(now);
     if (format == "csv") { body = log::toCsv(rows); type = "text/csv"; filename = base + ".csv"; }
@@ -529,36 +590,9 @@ int Core::importRekordboxXml(const std::string& xml) {
     log::MetaMap m = log::parseRekordboxXml(xml);
     if (m.empty()) return -1;
     const int n = int(m.size());
-    Json arr = Json::array();
-    for (auto& kv : m) {
-        Json o = Json::object();
-        o["id"] = int64_t(kv.first); o["title"] = kv.second.title; o["artist"] = kv.second.artist; o["album"] = kv.second.album;
-        o["genre"] = kv.second.genre; o["key"] = kv.second.key; o["bpm"] = kv.second.bpm; o["durationS"] = kv.second.durationS;
-        arr.push(o);
-    }
-    {
-        std::lock_guard<std::mutex> lk(mu_);
-        meta_ = std::move(m);
-    }
-    std::ofstream f(dataDir_ + "/rekordbox-meta.json", std::ios::trunc);
-    if (f) f << arr.dump();
+    meta_.replace(std::move(m));
+    meta_.save(dataDir_ + "/rekordbox-meta.json");
     return n;
-}
-
-void Core::loadMeta() {
-    std::ifstream f(dataDir_ + "/rekordbox-meta.json");
-    if (!f) return;
-    std::stringstream ss;
-    ss << f.rdbuf();
-    Json j;
-    if (!Json::parse(ss.str(), j) || !j.isArray()) return;
-    for (auto& o : j.items()) {
-        log::TrackMeta t;
-        t.title = o.get("title").asString(""); t.artist = o.get("artist").asString(""); t.album = o.get("album").asString("");
-        t.genre = o.get("genre").asString(""); t.key = o.get("key").asString("");
-        t.bpm = o.get("bpm").asNumber(); t.durationS = o.get("durationS").asNumber();
-        meta_[uint32_t(o.get("id").asNumber())] = t;
-    }
 }
 
 void Core::syncOscInput() {

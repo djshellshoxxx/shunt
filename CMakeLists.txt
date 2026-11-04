@@ -70,16 +70,29 @@ if(SHUNT_WITH_LINK)
 endif()
 
 # ---- shunt_app: JSON, settings, core runtime, HTTP/WebSocket server, embedded web UI
+# The served index page is built from ui/index.template.html + ui/css/*.css + ui/js/*.js
+# (FS-00 section 5); new UI modules are picked up by the glob, no CMake edit needed.
+file(GLOB SHUNT_UI_MODULES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/ui/css/*.css ${CMAKE_SOURCE_DIR}/ui/js/*.js)
+set(SHUNT_INDEX_HTML ${CMAKE_BINARY_DIR}/gen/index.html)
+add_custom_command(OUTPUT ${SHUNT_INDEX_HTML}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/gen
+  COMMAND ${CMAKE_COMMAND} -DUI_DIR=${CMAKE_SOURCE_DIR}/ui -DOUT=${SHUNT_INDEX_HTML} -P ${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/ui/index.template.html ${SHUNT_UI_MODULES} ${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake)
 foreach(ui index overlay)
   string(SUBSTRING ${ui} 0 1 first)
   string(TOUPPER ${first} FIRST)
   string(SUBSTRING ${ui} 1 -1 rest)
   set(sym k${FIRST}${rest}Html)
   set(gen ${CMAKE_BINARY_DIR}/gen/${ui}_html.cpp)
+  if(ui STREQUAL "index")
+    set(src ${SHUNT_INDEX_HTML})
+  else()
+    set(src ${CMAKE_SOURCE_DIR}/ui/${ui}.html)
+  endif()
   add_custom_command(OUTPUT ${gen}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/gen
-    COMMAND ${CMAKE_COMMAND} -DIN=${CMAKE_SOURCE_DIR}/ui/${ui}.html -DOUT=${gen} -DSYMBOL=${sym} -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
-    DEPENDS ${CMAKE_SOURCE_DIR}/ui/${ui}.html ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
+    COMMAND ${CMAKE_COMMAND} -DIN=${src} -DOUT=${gen} -DSYMBOL=${sym} -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${src} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
   list(APPEND UI_SOURCES ${gen})
 endforeach()
 add_library(shunt_app STATIC
@@ -87,15 +100,32 @@ add_library(shunt_app STATIC
   app/src/Settings.cpp
   app/src/Http.cpp
   app/src/Core.cpp
+  app/src/CoreFeatures.cpp
+  app/src/ControlRegistry.cpp
+  app/src/MetaStore.cpp
+  app/src/Feature.cpp
   app/src/Api.cpp
   ${UI_SOURCES}
 )
 target_include_directories(shunt_app PUBLIC app/include)
 target_link_libraries(shunt_app PUBLIC shunt_net shunt_clock shunt_log shunt_out shunt_meta Threads::Threads)
 
+# ---- shunt_features: one IFeature per app/src/features/*.cpp (FS-00 section 1). An OBJECT
+# library so SHUNT_REGISTER_FEATURE objects are never dropped by the static linker; every
+# executable that links shunt_app links shunt_features too. Empty glob: a generated stub.
+file(GLOB SHUNT_FEATURE_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/app/src/features/*.cpp)
+if(NOT SHUNT_FEATURE_SOURCES)
+  set(SHUNT_FEATURE_SOURCES ${CMAKE_BINARY_DIR}/gen/features_none.cpp)
+  if(NOT EXISTS ${SHUNT_FEATURE_SOURCES})
+    file(WRITE ${SHUNT_FEATURE_SOURCES} "// Generated: no feature sources in app/src/features yet.\nnamespace shunt::app { int shuntNoFeatures = 0; }\n")
+  endif()
+endif()
+add_library(shunt_features OBJECT ${SHUNT_FEATURE_SOURCES})
+target_link_libraries(shunt_features PUBLIC shunt_app)
+
 # ---- tools
 add_executable(shunt_headless tools/shunt_headless/main.cpp)
-target_link_libraries(shunt_headless PRIVATE shunt_app)
+target_link_libraries(shunt_headless PRIVATE shunt_features shunt_app)
 
 # Simulator: main plus the scenario registry (FS-TEST section 2).
 file(GLOB SHUNT_SIM_SOURCES CONFIGURE_DEPENDS tools/shuntsim/*.cpp tools/shuntsim/scenarios/*.cpp)
@@ -112,8 +142,19 @@ enable_testing()
 file(GLOB SHUNT_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp tests/features/test_*.cpp)
 add_executable(ShuntTests tests/main.cpp ${SHUNT_TEST_SOURCES})
 target_include_directories(ShuntTests PRIVATE tests)
-target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log shunt_out shunt_app)
+target_link_libraries(ShuntTests PRIVATE shunt_features shunt_net shunt_clock shunt_log shunt_out shunt_app)
 add_test(NAME ShuntTests COMMAND ShuntTests)
+# SIM-T* tests run the simulator binary (FS-TEST section 2).
+set(_shunt_test_env "SHUNTSIM_PATH=$<TARGET_FILE:shuntsim>")
+if(CMAKE_CROSSCOMPILING_EMULATOR)
+  list(JOIN CMAKE_CROSSCOMPILING_EMULATOR " " _shunt_emu0)
+  list(APPEND _shunt_test_env "SHUNT_SIM_LAUNCHER=${_shunt_emu0}")
+endif()
+set_tests_properties(ShuntTests PROPERTIES ENVIRONMENT "${_shunt_test_env}")
+# FS-00 section 6: the UI build rejects duplicate page ids and missing modules.
+add_test(NAME ui_build_checks
+  COMMAND ${CMAKE_COMMAND} -DUI_DIR=${CMAKE_SOURCE_DIR}/ui -DWORK=${CMAKE_BINARY_DIR}/ui_build_checks
+          -DBUILD_UI=${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake -P ${CMAKE_SOURCE_DIR}/cmake/test_build_ui.cmake)
 add_test(NAME shuntsim_localhost
   COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
 set_tests_properties(shuntsim_localhost PROPERTIES TIMEOUT 60)
