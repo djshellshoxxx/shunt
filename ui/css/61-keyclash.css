@@ -1,0 +1,22 @@
+/* FS-02 key clash alarm: Live valve chip, mute button and Outputs settings card. Original Shunt code. */
+.kc-box{display:block;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.kc-title{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--text)}
+.kc-check{font-size:15px}
+.kc-lbl{color:var(--dim);font-size:14px}
+.kc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 12px}
+.kc-note{color:var(--dim);font-size:14px;margin:0 0 12px}
+.kc-actions{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.kc-msg{min-height:22px;font-size:14px}
+.kc-msg.ok{color:var(--good)} .kc-msg.err{color:var(--bad)}
+.kc-chip{display:inline-block;max-width:100%;padding:4px 14px;border-radius:99px;font:600 14px var(--font);letter-spacing:.04em;border:1px solid var(--line2);color:var(--dim);background:var(--card2);overflow-wrap:anywhere}
+.kc-chip.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 60%,transparent);background:color-mix(in srgb,var(--good) 12%,var(--card2))}
+.kc-chip.energy{color:#1a1200;background:var(--warn);border-color:var(--warn)}
+.kc-chip.clash{color:#fff;background:var(--bad);border-color:var(--bad)}
+.kc-chip.clash.steady{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,var(--card2))}
+.kc-chip.none{color:var(--dim)}
+.kc-chip.pulse{animation:kcpulse 1s ease-in-out infinite}
+@keyframes kcpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--bad) 70%,transparent)}50%{box-shadow:0 0 0 8px transparent}}
+@media (prefers-reduced-motion:reduce){.kc-chip.pulse{animation:none}}
+.kc-link{display:block;margin-top:6px;font-size:14px;color:var(--accent)}
+.kc-link[hidden],.kc-mute[hidden]{display:none}
+body.stage .kc-chip{font-size:2.4vmin}

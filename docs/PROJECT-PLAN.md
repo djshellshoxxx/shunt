@@ -87,7 +87,7 @@ current; tick boxes as work lands.
 
 - [x] PR 0: extension points (FS-00) and PR T0: CI sanitizers, simulator scenarios, fixtures (FS-TEST)
 - [x] FS-01 On-air routing and clock mute
-- [ ] FS-02 Key clash alarm
+- [x] FS-02 Key clash alarm
 - [ ] FS-03 Phrase countdown (after spike P0)
 - [x] FS-04 MIDI learn
 - [x] FS-05 Replay a capture
