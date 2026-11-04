@@ -90,7 +90,7 @@ current; tick boxes as work lands.
 - [ ] FS-02 Key clash alarm
 - [ ] FS-03 Phrase countdown (after spike P0)
 - [x] FS-04 MIDI learn
-- [ ] FS-05 Replay a capture
+- [x] FS-05 Replay a capture
 - [ ] FS-06 Downbeat tap, nudge and confidence breakdown
 - [ ] FS-07 Venue profiles
 - [ ] FS-08 Set report

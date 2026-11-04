@@ -35,6 +35,8 @@ press `S` for stage mode. `/overlay` is an OBS browser source.
 
 **MIDI learn** (off by default, page "MIDI learn"): bind any control action (bar offset, beat only, set marker, latency) to a MIDI note, controller or program change from a footswitch or pad controller. Press Learn, hit the control within 15 s; conflicts ask before replacing. Linux reads ALSA raw devices (`/dev/snd/midiC*D*`) directly; see `docs/specs/FS-04-midi-learn.md`.
 
+**Replay a capture** (off by default, page "Replay"): plays a recorded or uploaded `.pcapng` (up to 256 MB) from the captures folder through the whole engine, tracklist and UI at 0.25x to 8x with pause, seek and loop, for demos, soundchecks without a booth and bug reports. While it runs the live network stack is stopped, an amber banner shows the replay, replayed rows are never saved, and outputs stay off unless "Send outputs" is ticked; see `docs/specs/FS-05-replay-a-capture.md`.
+
 Copyright and licence: all rights reserved (`LICENSE`).
 
 ## Documents
