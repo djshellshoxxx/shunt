@@ -43,7 +43,8 @@ add_library(shunt_clock STATIC clock/src/ClockEngine.cpp)
 target_include_directories(shunt_clock PUBLIC clock/include net/include)
 
 # ---- shunt_log: tracklist events and exporters
-add_library(shunt_log STATIC log/src/Tracklist.cpp log/src/RekordboxXml.cpp)
+file(GLOB SHUNT_LOG_SOURCES CONFIGURE_DEPENDS log/src/*.cpp)
+add_library(shunt_log STATIC ${SHUNT_LOG_SOURCES})
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
 # ---- shunt_meta: dbserver client and streaming rekordbox XML reader (RS-04)
