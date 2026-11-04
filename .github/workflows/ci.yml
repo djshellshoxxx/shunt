@@ -1,8 +1,10 @@
 name: ci
 
 on:
+  # Branches with a PR are covered by pull_request; push runs only on the default
+  # branch, so each PR commit is built once instead of twice.
   push:
-    branches: ["**"]
+    branches: ["claude/wizardly-mayer-1dyo4l", "main"]
     paths-ignore: ["docs/**", "**/*.md", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp"]
   pull_request:
     paths-ignore: ["docs/**", "**/*.md", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp"]
