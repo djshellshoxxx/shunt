@@ -11,6 +11,18 @@ endif()
 
 add_compile_options(-Wall -Wextra)
 
+# FS-TEST section 1: -DSHUNT_SANITIZE=address (ASan+UBSan) or thread (TSan).
+set(SHUNT_SANITIZE "" CACHE STRING "Sanitizer: '', address, thread")
+if(SHUNT_SANITIZE STREQUAL "address")
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+  add_link_options(-fsanitize=address,undefined)
+elseif(SHUNT_SANITIZE STREQUAL "thread")
+  add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=thread)
+elseif(NOT SHUNT_SANITIZE STREQUAL "")
+  message(FATAL_ERROR "SHUNT_SANITIZE must be '', address or thread")
+endif()
+
 find_package(Threads REQUIRED)
 
 # ---- shunt_net: packets, device table, claim machine, master tracker, pcapng, sockets
@@ -85,7 +97,10 @@ target_link_libraries(shunt_app PUBLIC shunt_net shunt_clock shunt_log shunt_out
 add_executable(shunt_headless tools/shunt_headless/main.cpp)
 target_link_libraries(shunt_headless PRIVATE shunt_app)
 
-add_executable(shuntsim tools/shuntsim/main.cpp)
+# Simulator: main plus the scenario registry (FS-TEST section 2).
+file(GLOB SHUNT_SIM_SOURCES CONFIGURE_DEPENDS tools/shuntsim/*.cpp tools/shuntsim/scenarios/*.cpp)
+add_executable(shuntsim ${SHUNT_SIM_SOURCES})
+target_include_directories(shuntsim PRIVATE tools/shuntsim)
 target_link_libraries(shuntsim PRIVATE shunt_net)
 
 add_executable(shunt_cli tools/shunt_cli/main.cpp)
@@ -93,16 +108,9 @@ target_link_libraries(shunt_cli PRIVATE shunt_net shunt_clock shunt_log)
 
 # ---- tests
 enable_testing()
-add_executable(ShuntTests
-  tests/main.cpp
-  tests/test_packets.cpp
-  tests/test_net.cpp
-  tests/test_clock.cpp
-  tests/test_log.cpp
-  tests/test_out.cpp
-  tests/test_app.cpp
-  tests/test_meta.cpp
-)
+# Tests are globbed so features add files, not CMake edits (FS-00 section 2).
+file(GLOB SHUNT_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp tests/features/test_*.cpp)
+add_executable(ShuntTests tests/main.cpp ${SHUNT_TEST_SOURCES})
 target_include_directories(ShuntTests PRIVATE tests)
 target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log shunt_out shunt_app)
 add_test(NAME ShuntTests COMMAND ShuntTests)
