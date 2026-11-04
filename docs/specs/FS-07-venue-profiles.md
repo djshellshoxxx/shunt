@@ -1,6 +1,6 @@
 # FS-07: Venue profiles
 
-Status: draft 0.1. Depends on FS-00 (settings merge, registry). Feature id `profiles`. UI `66-profiles.js`.
+Status: implemented (W2). Deviations at the end. Depends on FS-00 (settings merge, registry). Feature id `profiles`. UI `66-profiles.js`.
 
 ## Goal
 
@@ -93,3 +93,38 @@ confirmation, which sends the user to the page).
 
 Applying a profile in the simulator changes outputs live without restarting
 the network unless the diff says so. Effort: M (3 days).
+
+## Deviations (as implemented)
+
+Files: `app/src/features/Profiles.{h,cpp}`, `ui/js/66-profiles.js`, `ui/css/66-profiles.css`,
+`tests/features/test_profiles.cpp` (PR-T1..T12).
+
+1. **Settings seam (open).** `FeatureHost` can neither read the full config, nor apply a non-feature
+   settings patch (`Core::applyConfig`), nor tell the config directory. The feature talks to a small
+   `ProfileBackend {config(), applyConfig(patch, err), configDir()}`. Tests inject a fake with
+   `Settings::fromJson` semantics. The registered (default constructed) feature has no Core backend and
+   falls back to a features-only one built on `host.settings/saveSettings` (status/list `backend:
+   "features-only"`); there, apply refuses non-feature keys and does not call `applySettings`. Wiring
+   Core's `HostImpl` to `ProfileBackend` (or adding `config()/applyConfig()/configDir()` to
+   `FeatureHost`) completes the feature; no other change in this feature is needed. The profiles
+   folder defaults to `dirname(Settings::defaultPath())/profiles` until `configDir()` exists.
+2. `GET list` returns `{profiles:[...], active, activeName, dirty, max, backend}` (an object, not a bare
+   array). `diff` returns `{slug, changes, restart, needsConfirm, includeInterface}`; a 409 from `apply`
+   carries the same diff plus `error`.
+3. `save` also accepts `slug` and `overwrite`; a different profile whose slug collides gets `-2`, the same
+   name needs `overwrite:true` (409 `exists:true`). A successful save makes the profile `active`.
+   `rename` keeps the slug (MIDI learn bindings and `active` refer to it).
+4. `dirty` is refreshed by the feature's own thread (2 s) and after every operation, because `status()`
+   runs under the Core lock and may not read the config. `status.features.profiles`:
+   `{active, activeName, dirty, count, rev, warning, backend}` (`rev` changes when the list or active
+   profile changes; the UI refetches on it).
+5. Footswitch actions (`profile.apply:<slug>`, `profile.next/prev`, alphabetical by name) refuse any profile
+   whose diff changes interface, mode or device number and set `status.warning`. They exist only while the
+   feature is enabled.
+6. Sections `link`, `midi`, `osc` are filtered to their known keys (unknown keys dropped with a warning);
+   `features.<id>` content is opaque to the feature (objects only, nulls stripped); `features.profiles`
+   is never part of a profile.
+7. `shunt_headless --profile slug` is not implemented here (frozen file): it can call
+   `core.featureRequest("profiles","apply", POST {"slug":..,"confirm":true})` after `Core::start()`.
+8. The Live widget does not pre-compute "needs confirmation"; applying from it answers 409 for such a
+   profile and the widget then opens `#/profiles` with the diff shown.
