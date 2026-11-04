@@ -435,7 +435,9 @@ public:
 private:
     void applyDir(const Json& s) {
         const Json& d = s.get("capturesDir");
-        std::string dir = defaultCapturesDir();
+        // Default: <--data dir>/captures when the host knows it, else the shunt_headless default.
+        const std::string data = host_ ? host_->dataDir() : std::string();
+        std::string dir = !data.empty() && data[0] == '/' ? data + "/captures" : defaultCapturesDir();
         if (d.type() == Json::String && !d.asString().empty() && d.asString()[0] == '/' && d.asString().size() < 1024 &&
             d.asString().find('\0') == std::string::npos)
             dir = d.asString();

@@ -323,7 +323,9 @@ void Core::setBeatOnly(bool on) {
 
 void Core::setLatencyMs(double ms) {
     std::lock_guard<std::mutex> lk(mu_);
-    settings_.latencyMs = std::min(50.0, std::max(-20.0, ms));
+    if (!std::isfinite(ms)) return;
+    // Clamp to -20..+50 ms and keep 0.1 ms resolution (UI, OSC and MIDI all round the same way).
+    settings_.latencyMs = std::round(std::min(50.0, std::max(-20.0, ms)) * 10.0) / 10.0;
     applyEngineConfig();
     persistLocked();
 }

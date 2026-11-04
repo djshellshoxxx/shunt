@@ -49,6 +49,11 @@ public:
     bool feed(uint16_t port, const uint8_t* data, size_t len, int64_t recvNs, uint32_t srcIp, int64_t wallMs) override;
     void resetEngine(bool clearSession) override;
     void setOutputsEnabled(bool on) override;
+    bool hasCoreConfig() const override { return true; }
+    Json config() override;
+    bool applyConfig(const Json& patch, std::string& error) override;
+    std::string configDir() const override;
+    std::string dataDir() const override { return c_.dataDir_; }
 
 private:
     Core& c_;

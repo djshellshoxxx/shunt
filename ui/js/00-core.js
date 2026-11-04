@@ -147,5 +147,7 @@ addEventListener('DOMContentLoaded',()=>{
   buildNav();
   mountSlot($('#slot-banner'),'banner');
   route();connect();
-  api('/api/features').then(f=>{if(Array.isArray(f)){featureList=f;refreshFeatures()}}).catch(()=>{});
+  api('/api/features').then(f=>{if(Array.isArray(f)){featureList=f;refreshFeatures();
+    // A deep link to a feature page (e.g. #/replay) fell back to Live before the list was known.
+    const want=location.hash.replace('#/','');if(want&&want!==page&&pages[want]&&pageVisible(pages[want]))route()}}).catch(()=>{});
 });

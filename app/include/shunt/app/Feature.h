@@ -68,6 +68,19 @@ struct FeatureHost {
     virtual void resetEngine(bool clearSession = false) = 0;
     virtual void setOutputsEnabled(bool on) = 0;                    // default off while replaying
 
+    // ---- whole-config access (FS-07 profiles; optional, defaults keep test hosts minimal) ----
+    // hasCoreConfig(): true when config()/applyConfig() reach the real Core settings.
+    // config(): copy of the full settings document (Settings::toJson). No Core lock needed.
+    // applyConfig(): POST /api/config semantics (deep merge, validation, restarts, feature
+    // applySettings). Refused (false) inside Core-locked callbacks; call from handle() or a
+    // feature thread without holding the feature's own mutex (lock rules 2 and 3).
+    virtual bool hasCoreConfig() const { return false; }
+    virtual Json config() { return Json::object(); }
+    virtual bool applyConfig(const Json& /*patch*/, std::string& error) { error = "not supported by this host"; return false; }
+    // Directory of config.json and the --data directory; "" when unknown.
+    virtual std::string configDir() const { return ""; }
+    virtual std::string dataDir() const { return ""; }
+
     virtual ~FeatureHost() = default;
 };
 

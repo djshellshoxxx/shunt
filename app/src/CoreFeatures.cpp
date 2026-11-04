@@ -58,6 +58,8 @@ void Core::registerControls() {
     };
     add("latency.up", "Latency +0.5 ms", ControlAction::Trigger, "Latency", [latencyStep](double) { latencyStep(0.5); });
     add("latency.down", "Latency -0.5 ms", ControlAction::Trigger, "Latency", [latencyStep](double) { latencyStep(-0.5); });
+    // Value 0..1 maps linearly to the full -20..+50 ms range (MIDI faders, FS-06 fine nudge).
+    add("latency.set", "Latency (absolute)", ControlAction::Value, "Latency", [this](double v) { setLatencyMs(-20.0 + v * 70.0); });
     add("setstart.mark", "Set start marker", ControlAction::Trigger, "Tracklist", [this](double) { markSetStart(); });
 }
 
@@ -242,6 +244,26 @@ bool Core::HostImpl::saveSettings(const std::string& featureId, const Json& valu
         for (auto& s : c_.features_)
             if (s->id == featureId) s->enabled = enabledFrom(c_.settings_.raw.get("features").get(featureId), s->f->defaultEnabled());
     return c_.settings_.save(c_.configPath_);
+}
+
+Json Core::HostImpl::config() {
+    if (coreLockHeldByThisThread()) return c_.settings_.toJson();
+    return c_.config();
+}
+
+bool Core::HostImpl::applyConfig(const Json& patch, std::string& error) {
+    if (coreLockHeldByThisThread()) {
+        error = "applyConfig refused inside a Core-locked callback (FS-00 rule 2)";
+        return false;
+    }
+    return c_.applyConfig(patch, error);
+}
+
+std::string Core::HostImpl::configDir() const {
+    const std::string& p = c_.configPath_;
+    const size_t slash = p.find_last_of('/');
+    if (slash == std::string::npos) return p.empty() ? "" : ".";
+    return slash == 0 ? "/" : p.substr(0, slash);
 }
 
 void Core::HostImpl::onSessionCleared(std::function<void()> cb) {

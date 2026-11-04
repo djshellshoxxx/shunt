@@ -113,7 +113,7 @@ TEST_CASE("FS00-T3 built-in controls over /api/controls") {
     REQUIRE(Json::parse(r.body, list));
     REQUIRE(list.isArray());
     const char* ids[] = {"baroffset.cycle", "baroffset.set.0", "baroffset.set.1", "baroffset.set.2", "baroffset.set.3", "beatonly.toggle",
-                         "beatonly.on", "beatonly.off", "latency.up", "latency.down", "setstart.mark"};
+                         "beatonly.on", "beatonly.off", "latency.up", "latency.down", "latency.set", "setstart.mark"};
     for (const char* id : ids) {
         bool found = false;
         for (auto& o : list.items()) {
@@ -127,6 +127,13 @@ TEST_CASE("FS00-T3 built-in controls over /api/controls") {
         if (!found) INFO("missing control %s\n", id);
         CHECK(found);
     }
+    // latency.set: 0..1 maps to -20..+50 ms with 0.1 ms resolution
+    handleRequest(core, req("POST", "/api/controls/latency.set", "{\"value\":0.5}"));
+    CHECK_NEAR(core.settings().latencyMs, 15.0, 1e-9);
+    handleRequest(core, req("POST", "/api/controls/latency.set", "{\"value\":7}"));   // clamped to 1
+    CHECK_NEAR(core.settings().latencyMs, 50.0, 1e-9);
+    handleRequest(core, req("POST", "/api/controls/latency.set", "{\"value\":0.30001}"));
+    CHECK_NEAR(core.settings().latencyMs, 1.0, 1e-9);
     r = handleRequest(core, req("POST", "/api/controls/baroffset.set.2", "{\"value\":1}"));
     CHECK_EQ(r.status, 200);
     CHECK_EQ(core.settings().barOffset, 2);
