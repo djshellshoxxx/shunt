@@ -109,6 +109,26 @@ add_test(NAME ShuntTests COMMAND ShuntTests)
 add_test(NAME shuntsim_localhost
   COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
 set_tests_properties(shuntsim_localhost PROPERTIES TIMEOUT 60)
+if(CMAKE_CROSSCOMPILING_EMULATOR)
+  # The selftest spawns the cross-built simulator; prefix it with the emulator.
+  list(JOIN CMAKE_CROSSCOMPILING_EMULATOR " " _shunt_emu)
+  set_tests_properties(shuntsim_localhost PROPERTIES ENVIRONMENT "SHUNT_SIM_LAUNCHER=${_shunt_emu}")
+endif()
+
+# ---- N-T2 replay tests against real captures (fetched by tools/fetch_captures.sh)
+set(SHUNT_CAPTURES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/captures CACHE PATH "Directory with reference captures")
+function(shunt_replay_test name file regex)
+  if(EXISTS ${SHUNT_CAPTURES_DIR}/${file})
+    add_test(NAME replay_${name} COMMAND shunt_cli --replay ${SHUNT_CAPTURES_DIR}/${file} --speed 0)
+    set_tests_properties(replay_${name} PROPERTIES PASS_REGULAR_EXPRESSION "${regex}"
+                         FAIL_REGULAR_EXPRESSION "[1-9][0-9]* parse errors" TIMEOUT 120)
+  endif()
+endfunction()
+# Golden expectations: device numbers/kinds and master behaviour, zero parse errors on 50000..50002.
+shunt_replay_test(powerup powerup.pcapng "device 2 joined CDJ-2000nexus \\(nexus\\).*: [0-9]+ parsed, 0 parse errors, 3 devices, 0 master changes")
+shunt_replay_test(to_virtual to-virtual.pcapng "device 5 joined Virtual CDJ.*: [0-9]+ parsed, 0 parse errors, 4 devices")
+shunt_replay_test(s06_load_and_play S06-load-and-play.pcapng "master 0 -> 1.*0 parse errors, 2 devices, 1 master changes, 1[0-9][0-9] master beats, bpm 12[78]\\.")
+shunt_replay_test(sync_master Sync-Master.pcapng "master 2 -> 33.*master 33 -> 3.*0 parse errors, 3 devices, 6 master changes")
 
 # Metadata tests are a separate binary (fake dbserver on loopback).
 file(GLOB SHUNT_META_TESTS CONFIGURE_DEPENDS tests/meta/*.cpp)
