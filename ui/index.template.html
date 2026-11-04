@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Shunt</title>
+<style>
+/*@CSS@*/
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" aria-label="Shunt">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#2ee6c4" stroke-width="2.4"/><path d="M6 16h6l3-7 3 14 3-7h5" fill="none" stroke="#2ee6c4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>SHUNT</span>
+  </div>
+  <nav id="nav" aria-label="Pages"></nav>
+  <div class="conn" role="status" aria-live="polite"><i class="dot" id="connDot"></i><span id="connTxt">Connecting</span></div>
+  <button class="btn" id="stageBtn" title="Stage mode (S)">Stage</button>
+</header>
+<div class="slot" id="slot-banner" data-slot="banner"></div>
+<main id="main">
+  <div class="banner bad" id="engineBanner" role="alert"></div>
+  <div class="banner" id="offlineBanner" role="alert">Engine not reachable. Retrying automatically…</div>
+  <div class="banner" id="firstRun"></div>
+  <section id="page"></section>
+</main>
+<div class="stagebar" id="stagebar"><div id="sbMaster"></div><div id="sbOut"></div><div class="x">Press Esc to leave stage mode</div></div>
+/*@JS@*/
+</body>
+</html>

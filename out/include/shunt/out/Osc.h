@@ -65,6 +65,10 @@ public:
     void onMasterChanged(int device);
     void onTrackLoaded(int deck, uint32_t rekordboxId, const std::string& title, const std::string& artist);
     void onOnAir(int deck, bool on);
+    // FS-01 OscExtras hook: one arbitrary message, sent only while OSC is enabled (any profile;
+    // the caller picks addresses per profile). Output thread only; features use
+    // OutputManager::sendOsc, which queues to that thread.
+    void send(const std::string& address, const std::vector<OscArg>& args) { emit(address, args); }
 
     uint64_t sent() const { return sent_; }
     const std::string& error() const { return error_; }

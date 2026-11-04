@@ -1,0 +1,20 @@
+/* FS-01 on-air widgets: Outputs MIDI/OSC editors and the Live valve chip. Original Shunt code. */
+.oa-box{display:block;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.oa-title{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--text)}
+.oa-check{font-size:15px}
+.oa-lbl{color:var(--dim);font-size:14px}
+.oa-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 12px}
+.oa-map{border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:8px 12px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px 10px;min-width:0}
+.oa-map legend{padding:0 4px}
+.oa-cell{display:grid;gap:4px}
+.oa-cell select{background:var(--bg2);border:1px solid var(--line2);border-radius:10px;padding:8px 10px;width:100%;font-size:15px}
+.oa-cell select:focus{border-color:var(--accent);outline:none}
+.oa-note{color:var(--dim);font-size:14px;margin:0 0 12px}
+.oa-actions{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.oa-msg{min-height:22px;font-size:14px}
+.oa-msg.ok{color:var(--good)} .oa-msg.err{color:var(--bad)}
+.oa-chip{display:inline-block;padding:4px 14px;border-radius:99px;font:600 14px var(--font);letter-spacing:.08em;border:1px solid var(--line2);color:var(--dim);background:var(--card2)}
+.oa-chip.on{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 60%,transparent);background:color-mix(in srgb,var(--bad) 12%,var(--card2))}
+.oa-chip.muted{color:#1a1200;background:var(--warn);border-color:var(--warn)}
+.oa-chip.none{color:var(--faint)}
+body.stage .oa-chip{font-size:2.4vmin}

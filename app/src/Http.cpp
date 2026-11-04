@@ -116,18 +116,44 @@ struct HttpServer::Client {
     std::string in, out;
     bool ws = false, closing = false;
     time_t last = 0;
+    size_t cap = 0;          // max bytes buffered: largest body limit until the headers are known
 };
 
+HttpServer::HttpServer() { routeMaxBody_.push_back({"/api/f/replay/upload", kReplayUploadMaxBody}); }
+
+void HttpServer::setMaxBody(size_t bytes) { maxBody_ = bytes; }
+
+void HttpServer::setMaxBody(const std::string& pathPrefix, size_t bytes) {
+    for (auto& r : routeMaxBody_) if (r.first == pathPrefix) { r.second = bytes; return; }
+    routeMaxBody_.push_back({pathPrefix, bytes});
+}
+
+size_t HttpServer::maxBodyFor(const std::string& path) const {
+    size_t best = 0, limit = maxBody_;
+    for (auto& r : routeMaxBody_)
+        if (r.first.size() >= best && path.compare(0, r.first.size(), r.first) == 0) { best = r.first.size(); limit = r.second; }
+    return limit;
+}
+
 namespace {
-constexpr size_t kMaxBody = 64u << 20;
+constexpr size_t kHeaderSlack = 32768;
 const char* statusText(int s) {
     switch (s) {
     case 200: return "OK";
+    case 201: return "Created";
+    case 204: return "No Content";
     case 400: return "Bad Request";
+    case 401: return "Unauthorized";
+    case 403: return "Forbidden";
     case 404: return "Not Found";
     case 405: return "Method Not Allowed";
+    case 409: return "Conflict";
     case 413: return "Payload Too Large";
+    case 415: return "Unsupported Media Type";
+    case 422: return "Unprocessable Entity";
+    case 429: return "Too Many Requests";
     case 500: return "Internal Server Error";
+    case 503: return "Service Unavailable";
     default: return "OK";
     }
 }
@@ -184,6 +210,8 @@ void HttpServer::broadcast(const std::string& text) {
 
 void HttpServer::run() {
     std::list<Client> clients;
+    size_t maxAny = maxBody_;
+    for (auto& r : routeMaxBody_) maxAny = std::max(maxAny, r.second);
     auto drop = [&](std::list<Client>::iterator it) {
         if (it->ws) --wsCount_;
         ::close(it->fd);
@@ -215,7 +243,7 @@ void HttpServer::run() {
                 setNonBlocking(fd);
                 int one = 1;
                 ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-                Client c; c.fd = fd; c.last = time(nullptr);
+                Client c; c.fd = fd; c.last = time(nullptr); c.cap = maxAny + kHeaderSlack;
                 clients.push_back(std::move(c));
             }
         }
@@ -231,7 +259,7 @@ void HttpServer::run() {
                 char buf[8192];
                 for (;;) {
                     ssize_t r = ::recv(c.fd, buf, sizeof buf, 0);
-                    if (r > 0) { c.in.append(buf, size_t(r)); c.last = time(nullptr); if (c.in.size() > kMaxBody + 32768) { dead = true; break; } }
+                    if (r > 0) { c.in.append(buf, size_t(r)); c.last = time(nullptr); if (c.in.size() > c.cap) { dead = true; break; } }
                     else if (r == 0) { dead = true; break; }
                     else break;
                 }
@@ -278,12 +306,18 @@ void HttpServer::run() {
                         }
                         size_t clen = 0;
                         if (req.headers.count("content-length")) clen = size_t(std::strtoul(req.headers["content-length"].c_str(), nullptr, 10));
-                        if (clen > kMaxBody) {
+                        if (clen > maxBodyFor(req.path)) {
                             c.out += "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                             c.closing = true;
                         } else if (c.in.size() >= hend + 4 + clen) {
-                            req.body = c.in.substr(hend + 4, clen);
-                            c.in.erase(0, hend + 4 + clen);
+                            if (c.in.size() == hend + 4 + clen) {   // usual case: move, do not copy a large body
+                                req.body = std::move(c.in);
+                                req.body.erase(0, hend + 4);
+                                c.in.clear();
+                            } else {
+                                req.body = c.in.substr(hend + 4, clen);
+                                c.in.erase(0, hend + 4 + clen);
+                            }
                             auto up = req.headers.find("upgrade");
                             if (req.path == "/ws" && up != req.headers.end() && req.headers.count("sec-websocket-key")) {
                                 c.out += "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
@@ -303,6 +337,9 @@ void HttpServer::run() {
                                 c.out += o;
                                 c.closing = true;
                             }
+                        } else {                                       // body still arriving: buffer it once
+                            c.cap = hend + 4 + clen + kHeaderSlack;
+                            if (c.in.capacity() < hend + 4 + clen) c.in.reserve(hend + 4 + clen);
                         }
                     }
                 }

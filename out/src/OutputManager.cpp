@@ -52,6 +52,24 @@ void OutputManager::push(const OutputEvent& e) {
     if (events_.size() < 256) events_.push_back(e);
 }
 
+bool OutputManager::sendOsc(const std::string& address, std::vector<OscArg> args) {
+    if (address.empty() || address[0] != '/') return false;
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!settings_.osc.enabled || oscQueue_.size() >= 256) return false;
+    oscQueue_.push_back({address, std::move(args)});
+    return true;
+}
+
+OscProfile OutputManager::oscProfile() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return settings_.osc.profile;
+}
+
+bool OutputManager::oscEnabled() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return settings_.osc.enabled;
+}
+
 void OutputManager::start() {
     if (running_.exchange(true)) return;
     thread_ = std::thread([this] { run(); });
@@ -73,8 +91,14 @@ void OutputManager::run() {
             events_.pop_front();
             if (e.kind == OutputEvent::Master) osc_.onMasterChanged(e.deck);
             else if (e.kind == OutputEvent::Track) osc_.onTrackLoaded(e.deck, e.id, e.title, e.artist);
-            else osc_.onOnAir(e.deck, e.on);
+            else if (legacyOnAir_.load(std::memory_order_relaxed)) osc_.onOnAir(e.deck, e.on);
         }
+        while (!oscQueue_.empty()) {          // FS-01 sendOsc hook; OscOutput drops them if OSC was disabled since
+            osc_.send(oscQueue_.front().address, oscQueue_.front().args);
+            oscQueue_.pop_front();
+        }
+        gen_.setMuted(mute_.load(std::memory_order_relaxed));
+        gen_.setUnmuteMode(unmuteContinue_.load(std::memory_order_relaxed) ? UnmuteMode::Continue : UnmuteMode::Start);
         osc_.poll(now, tl);
         link_.poll(now, tl);
         if (settings_.midi.enabled && port_) {

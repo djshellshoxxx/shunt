@@ -36,6 +36,9 @@ public:
     const Json& get(const std::string& key) const;
     bool has(const std::string& key) const;
     void erase(const std::string& key);
+    // Deep merge (RFC 7386 style, FS-00 section 2): objects merge key by key, a null value
+    // deletes the key, arrays and scalars replace. A non-object patch replaces *this.
+    void merge(const Json& patch);
     const std::vector<std::pair<std::string, Json>>& members() const { return obj_; }
     // Array access.
     void push(Json v) { if (type_ != Array) { *this = array(); } arr_.push_back(std::move(v)); }

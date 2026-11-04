@@ -1,0 +1,5 @@
+# file	sha256	source (Deep-Symmetry/dysentery @ 7f61b1c1276c27c80643632c24ee57d13b0db572)	notes
+powerup.pcapng	881b90bd9acbbdd0823b11fd80ade542e0f4319429665e250531c24db5fe9d72	doc/assets/powerup.pcapng	DJM-2000nexus + 2x CDJ-2000nexus power-up
+to-virtual.pcapng	743df9d8a03a648ffe1a789b80ec76bf459ac0ad3c4e21f292dc722ce4a2f462	doc/assets/to-virtual.pcapng	virtual CDJ joins (device 5)
+S06-load-and-play.pcapng	c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2	doc/assets/captures/S06-load-and-play/run.pcapng	2x CDJ-2000nexus fw 1.44, play/pause/cue, ~128 BPM
+Sync-Master.pcapng	cc2bfac62a97de81a5b9c53d23509c46ba1c224b3fa2acf540b7167e7d595d8f	doc/assets/Sync-Master.pcapng	master handoffs incl. mixer

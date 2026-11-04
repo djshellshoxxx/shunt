@@ -88,6 +88,9 @@ void ClaimMachine::sendKeepAlive() {
     p.ip = cfg_.ip;
     p.peerCount = uint8_t(devices_.size() + 1);
     p.cdj3000Compatible = true;
+    // Real players latch "was I first on the network" at start-up and never change it.
+    if (!firstLatched_) { firstOnNetwork_ = devices_.size() == 0; firstLatched_ = true; }
+    p.firstOnNetwork = firstOnNetwork_;
     const size_t len = buildKeepAlive(buf_, p);
     sender_.send(kAnnouncePort, cfg_.broadcast, buf_, len);
     ++sent_;

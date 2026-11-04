@@ -1,0 +1,97 @@
+# Builds the single-file web UI from ui/index.template.html, ui/css/*.css and ui/js/*.js
+# (FS-00 section 5). Original Shunt code.
+# Usage: cmake -DUI_DIR=<ui dir> -DOUT=<index.html> -P build_ui.cmake
+#  - CSS files are concatenated in name order into the /*@CSS@*/ placeholder.
+#  - Each JS file becomes its own <script> ("use strict" prepended) in name order at /*@JS@*/,
+#    so one failing feature module cannot stop the shell or the other pages.
+# Fails when a core module is missing, a file name is malformed, a reserved feature number is
+# used under another name, or a Shunt.registerPage id repeats (or is not the first key).
+cmake_minimum_required(VERSION 3.16)
+if(NOT UI_DIR OR NOT OUT)
+  message(FATAL_ERROR "build_ui: need -DUI_DIR and -DOUT")
+endif()
+
+set(_required
+  index.template.html css/00-base.css
+  js/00-core.js js/10-live.js js/20-outputs.js js/25-tracklist.js js/30-scope.js js/35-compat.js js/40-diagnostics.js)
+foreach(f IN LISTS _required)
+  if(NOT EXISTS "${UI_DIR}/${f}")
+    message(FATAL_ERROR "build_ui: registered UI file missing: ${UI_DIR}/${f}")
+  endif()
+endforeach()
+
+# Reserved numbers (FS-00 section 5): 6x belongs to one feature id each.
+set(_reserved 60=onair 61=keyclash 62=phrase 63=midilearn 64=replay 65=nudge 66=profiles 67=report 68=pulse)
+function(_check_name path ext)
+  get_filename_component(name "${path}" NAME)
+  if(NOT name MATCHES "^([0-9][0-9])-([a-z0-9-]+)\\.${ext}$")
+    message(FATAL_ERROR "build_ui: bad file name '${name}' (expected NN-name.${ext})")
+  endif()
+  set(num "${CMAKE_MATCH_1}")
+  set(id "${CMAKE_MATCH_2}")
+  foreach(r IN LISTS _reserved)
+    string(REPLACE "=" ";" kv "${r}")
+    list(GET kv 0 rnum)
+    list(GET kv 1 rid)
+    if(num STREQUAL rnum AND NOT id STREQUAL rid)
+      message(FATAL_ERROR "build_ui: ${name}: number ${num} is reserved for '${rid}'")
+    endif()
+  endforeach()
+endfunction()
+
+file(READ "${UI_DIR}/index.template.html" page)
+foreach(ph "/*@CSS@*/" "/*@JS@*/")
+  string(FIND "${page}" "${ph}" pos)
+  if(pos EQUAL -1)
+    message(FATAL_ERROR "build_ui: placeholder ${ph} missing in index.template.html")
+  endif()
+endforeach()
+
+file(GLOB css_files "${UI_DIR}/css/*.css")
+list(SORT css_files)
+set(css "")
+foreach(f IN LISTS css_files)
+  _check_name("${f}" css)
+  file(READ "${f}" content)
+  string(APPEND css "${content}")
+endforeach()
+
+file(GLOB js_files "${UI_DIR}/js/*.js")
+list(SORT js_files)
+set(js "")
+set(page_ids "")
+foreach(f IN LISTS js_files)
+  _check_name("${f}" js)
+  get_filename_component(name "${f}" NAME)
+  file(READ "${f}" content)
+  string(FIND "${content}" "</script" bad)
+  if(NOT bad EQUAL -1)
+    message(FATAL_ERROR "build_ui: ${name} contains '</script' (would end the inline script)")
+  endif()
+  # Every Shunt.registerPage({ must start with id:'<id>' so ids can be checked here.
+  string(REGEX MATCHALL "Shunt\\.registerPage\\(" calls "${content}")
+  string(REGEX MATCHALL "Shunt\\.registerPage\\([ \t\r\n]*{[ \t\r\n]*id[ \t]*:[ \t]*['\"][a-z0-9-]+['\"]" ids "${content}")
+  list(LENGTH calls ncalls)
+  list(LENGTH ids nids)
+  if(NOT ncalls EQUAL nids)
+    message(FATAL_ERROR "build_ui: ${name}: Shunt.registerPage({...}) must start with id:'<id>' (literal)")
+  endif()
+  foreach(m IN LISTS ids)
+    string(REGEX REPLACE ".*['\"]([a-z0-9-]+)['\"]$" "\\1" id "${m}")
+    list(FIND page_ids "${id}" dup)
+    if(NOT dup EQUAL -1)
+      message(FATAL_ERROR "build_ui: duplicate page id '${id}' (${name})")
+    endif()
+    list(APPEND page_ids "${id}")
+  endforeach()
+  string(APPEND js "<script>\n\"use strict\";\n/* ui/js/${name} */\n${content}</script>\n")
+endforeach()
+
+string(REPLACE "/*@CSS@*/\n" "${css}" page "${page}")
+string(REPLACE "/*@JS@*/\n" "${js}" page "${page}")
+file(WRITE "${OUT}.tmp" "${page}")
+file(RENAME "${OUT}.tmp" "${OUT}")
+list(LENGTH page_ids npages)
+list(LENGTH js_files njs)
+list(LENGTH css_files ncss)
+message(STATUS "build_ui: ${njs} js, ${ncss} css, ${npages} pages -> ${OUT}")

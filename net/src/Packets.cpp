@@ -32,15 +32,19 @@ void putName(uint8_t* dst, const char* name) {
 }
 
 // Common header for 50000: type at 0x0a, 0x00 at 0x0b, name at 0x0c, 0x01 at 0x20,
-// kind at 0x21, length at 0x22.
-void announceHeader(uint8_t* out, uint8_t type, const char* name, DeviceKind kind, uint16_t length) {
+// protocol variant at 0x21, length at 0x22. 0x21 is NOT the device kind: real
+// nexus-era devices send 0x02 in every packet (verified on the 2026-07-29
+// CDJ-2000nexus captures); CDJ-3000-compatible senders use 0x04 in the hello and
+// 0x03 in the three claim stages (ES-02 section 2). The device kind lives at 0x34
+// in keep-alives and 0x24 in hellos.
+void announceHeader(uint8_t* out, uint8_t type, const char* name, uint8_t variant, uint16_t length) {
     std::memset(out, 0, length);
     std::memcpy(out, kMagic, kMagicLen);
     out[0x0a] = type;
     out[0x0b] = 0x00;
     putName(out + 0x0c, name);
     out[0x20] = 0x01;
-    out[0x21] = uint8_t(kind);
+    out[0x21] = variant;
     put16(out + 0x22, length);
 }
 
@@ -90,7 +94,7 @@ std::optional<Event> parseAnnounce(const uint8_t* d, size_t len, int64_t recvNs,
         ev.type = EventType::KeepAlive;
         auto& k = ev.keepAlive;
         copyName(k.name, d + 0x0c);
-        const uint8_t kind = d[0x21];
+        const uint8_t kind = d[0x34];   // 0x01 CDJ, 0x02 mixer (0x21 is a protocol constant)
         k.kind = kind >= 1 && kind <= 3 ? DeviceKind(kind) : DeviceKind::Unknown;
         k.number = d[0x24];
         std::memcpy(k.mac.data(), d + 0x26, 6);
@@ -288,10 +292,11 @@ std::optional<Event> parseForPort(uint16_t port, const uint8_t* d, size_t len, i
 // ---------------------------------------------------------------- builders
 
 size_t buildKeepAlive(uint8_t* out, const KeepAliveParams& p) {
-    announceHeader(out, 0x06, p.name, p.kind, uint16_t(kKeepAliveLen));
+    announceHeader(out, 0x06, p.name, kVariantLegacy, uint16_t(kKeepAliveLen));
     const uint8_t kindByte = p.kind == DeviceKind::Mixer ? 0x02 : 0x01;
     out[0x24] = p.number;
-    out[0x25] = kindByte;
+    // 0x25 is latched at start-up on real players: 0x02 if first on the network, else 0x01.
+    out[0x25] = p.firstOnNetwork ? 0x02 : 0x01;
     std::memcpy(out + 0x26, p.mac.data(), 6);
     put32(out + 0x2c, p.ip);
     out[0x30] = p.peerCount;
@@ -302,14 +307,15 @@ size_t buildKeepAlive(uint8_t* out, const KeepAliveParams& p) {
 
 size_t buildHello(uint8_t* out, const char* name, bool cdj3000Compatible, DeviceKind kind) {
     const size_t len = cdj3000Compatible ? kHelloLen3000 : kHelloLen;
-    announceHeader(out, 0x0a, name, kind, uint16_t(len));
+    announceHeader(out, 0x0a, name, cdj3000Compatible ? kVariantHello3000 : kVariantLegacy, uint16_t(len));
     out[0x24] = kind == DeviceKind::Mixer ? 0x02 : 0x01;
-    if (cdj3000Compatible) out[0x25] = 0x64;   // TODO verify against a CDJ-3000 capture
+    if (cdj3000Compatible) out[0x25] = 0x64;   // per the published CDJ-3000-compatible layout
     return len;
 }
 
-size_t buildClaimStage1(uint8_t* out, const char* name, uint8_t counter, const std::array<uint8_t, 6>& mac) {
-    announceHeader(out, 0x00, name, DeviceKind::CDJ, uint16_t(kClaim1Len));
+size_t buildClaimStage1(uint8_t* out, const char* name, uint8_t counter, const std::array<uint8_t, 6>& mac,
+                        bool cdj3000Compatible) {
+    announceHeader(out, 0x00, name, cdj3000Compatible ? kVariantClaim3000 : kVariantLegacy, uint16_t(kClaim1Len));
     out[0x24] = counter;
     out[0x25] = 0x01;
     std::memcpy(out + 0x26, mac.data(), 6);
@@ -317,8 +323,8 @@ size_t buildClaimStage1(uint8_t* out, const char* name, uint8_t counter, const s
 }
 
 size_t buildClaimStage2(uint8_t* out, const char* name, uint32_t ip, const std::array<uint8_t, 6>& mac,
-                        uint8_t number, uint8_t counter, uint8_t autoFlag) {
-    announceHeader(out, 0x02, name, DeviceKind::CDJ, uint16_t(kClaim2Len));
+                        uint8_t number, uint8_t counter, uint8_t autoFlag, bool cdj3000Compatible) {
+    announceHeader(out, 0x02, name, cdj3000Compatible ? kVariantClaim3000 : kVariantLegacy, uint16_t(kClaim2Len));
     put32(out + 0x24, ip);
     std::memcpy(out + 0x28, mac.data(), 6);
     out[0x2e] = number;
@@ -328,15 +334,15 @@ size_t buildClaimStage2(uint8_t* out, const char* name, uint32_t ip, const std::
     return kClaim2Len;
 }
 
-size_t buildClaimStage3(uint8_t* out, const char* name, uint8_t number, uint8_t counter) {
-    announceHeader(out, 0x04, name, DeviceKind::CDJ, uint16_t(kClaim3Len));
+size_t buildClaimStage3(uint8_t* out, const char* name, uint8_t number, uint8_t counter, bool cdj3000Compatible) {
+    announceHeader(out, 0x04, name, cdj3000Compatible ? kVariantClaim3000 : kVariantLegacy, uint16_t(kClaim3Len));
     out[0x24] = number;
     out[0x25] = counter;
     return kClaim3Len;
 }
 
 size_t buildDefend(uint8_t* out, const char* name, uint8_t number) {
-    announceHeader(out, 0x08, name, DeviceKind::CDJ, uint16_t(kDefendLen));
+    announceHeader(out, 0x08, name, kVariantLegacy, uint16_t(kDefendLen));
     out[0x24] = number;
     return kDefendLen;
 }

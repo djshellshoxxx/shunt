@@ -1,6 +1,10 @@
 // Core runtime (RS-07 section 7): net thread, clock engine, tracklist, outputs, status snapshot.
+// Feature host, control registry and replay seam: FS-00 (docs/specs/FS-00-extension-points.md).
 #pragma once
+#include "shunt/app/ControlRegistry.h"
+#include "shunt/app/Feature.h"
 #include "shunt/app/Json.h"
+#include "shunt/app/MetaStore.h"
 #include "shunt/app/Settings.h"
 #include "shunt/clock/ClockEngine.h"
 #include "shunt/log/RekordboxXml.h"
@@ -11,7 +15,9 @@
 #include <atomic>
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace shunt::app {
@@ -46,7 +52,20 @@ public:
 
     const Settings& settings() const { return settings_; }
 
+    // ---- FS-00 extension points ----
+    // Adds a feature next to the registered ones (tests). Only before the first start(); false otherwise.
+    bool addFeature(std::unique_ptr<IFeature> f);
+    Json features();                                   // [{id, enabled, error}] in id order
+    // Routes /api/f/<id>/<subpath>. nullopt: unknown id or the feature declined (404).
+    std::optional<HttpResponse> featureRequest(const std::string& id, const std::string& subpath, const HttpRequest& req);
+    ControlRegistry& controls() { return controls_; }
+    Json controlsList();                               // [{id, label, kind, group}]
+    MetaStore& meta() { return meta_; }
+
 private:
+    class HostImpl;
+    struct FeatureSlot;
+    struct Parked;
     struct Live {
         double bpm = 0, pitchPct = 0;
         bool playing = false, onAir = false, master = false;
@@ -58,6 +77,23 @@ private:
     void netLoop();
     void buildStack();
     void handle(const net::Event& ev, int64_t wallMs);
+    void pushOutputLocked(const out::OutputEvent& e);
+    // FS-00 feature host (CoreFeatures.cpp)
+    void registerControls();
+    void createFeatures();
+    void shutdownFeatures();
+    void featuresOnEventLocked(const net::Event& ev, int64_t wallMs);
+    void featuresOnTickLocked(int64_t nowNs, int64_t wallMs);
+    Json featuresStatusLocked();
+    void featureFailed(FeatureSlot& f, const char* where, const std::string& what);
+    std::vector<std::pair<FeatureSlot*, Json>> syncFeatureSettingsLocked(const Json& before);
+    bool featureEnabledLocked(const FeatureSlot& f) const;
+    bool enterReplay(ReplayHooks* hooks);
+    void leaveReplay();
+    void leaveReplayLocked();
+    bool feedLocked(uint16_t port, const uint8_t* data, size_t len, int64_t recvNs, uint32_t srcIp, int64_t wallMs);
+    void resetEngineLocked(bool clearSession);
+    void replayPassLocked(int64_t nowNs, int64_t wallMs);
     void applyEngineConfig();
     void persistLocked();
     void appendTracklistFilesLocked();
@@ -85,12 +121,26 @@ private:
     uint8_t masterTrackSlot_ = 0;
     size_t writtenEvents_ = 0, writtenRows_ = 0;
     std::string sessionFile_;
-    log::MetaMap meta_;
-    meta::DbServerClient db_;      // dbserver lookups; callbacks run on its worker thread and take mu_
+    MetaStore meta_;               // own leaf lock (FS-00 section 4)
+    meta::DbServerClient db_;      // dbserver lookups; callbacks run on its worker thread
     out::OscInput oscIn_;
     int oscInPortOpen_ = 0;
-    void loadMeta();
     void syncOscInput();
+    void onOsc(const out::OscMessage& m);
+
+    ControlRegistry controls_;
+    std::unique_ptr<HostImpl> host_;
+    std::vector<std::unique_ptr<IFeature>> extraFeatures_;   // from addFeature(), before start
+    std::vector<std::unique_ptr<FeatureSlot>> features_;     // immutable once featuresReady_
+    std::atomic<bool> featuresReady_{false};
+    bool featuresCreated_ = false;
+    std::mutex cbMu_;                                        // leaf: session-cleared callbacks
+    std::vector<std::function<void()>> sessionCleared_;
+    // replay seam (FS-00 section 1, FS-05); guarded by mu_
+    ReplayHooks* replay_ = nullptr;
+    std::unique_ptr<net::NetworkStack> replayStack_;
+    std::unique_ptr<Parked> parked_;
+    bool outputsEnabled_ = true, leaveReplayRequested_ = false;
     std::atomic<bool> running_{false}, restart_{false};
     std::thread thread_;
 };

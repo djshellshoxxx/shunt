@@ -178,7 +178,8 @@ TEST_CASE("N-T4 CDJ-3000 keep-alive golden bytes") {
     const uint8_t golden[54] = {
         0x51, 0x73, 0x70, 0x74, 0x31, 0x57, 0x6d, 0x4a, 0x4f, 0x4c, 0x06, 0x00,
         'S', 'h', 'u', 'n', 't', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0x01, 0x01, 0x00, 0x36, 0x07, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01,
+        // 0x21 = 0x02 protocol variant; 0x25 = 0x02 because Shunt was alone when it joined
+        0x01, 0x02, 0x00, 0x36, 0x07, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01,
         0xc0, 0xa8, 0x01, 0x64, 0x01, 0x00, 0x00, 0x00, 0x01, 0x64};
     CHECK_EQ(ka->bytes.size(), 54u);
     CHECK(std::memcmp(ka->bytes.data(), golden, 54) == 0);
@@ -367,6 +368,32 @@ TEST_CASE("pcapng write and read round trip") {
     auto ev = parseBeatPort(all[1].payload.data(), all[1].payload.size(), 0);
     REQUIRE(ev.has_value());
     CHECK_EQ(ev->beat.beatInBar, 2);
+    std::remove(path.c_str());
+}
+
+// Regression: an Enhanced Packet Block whose captured length wraps 32-bit
+// arithmetic (20 + 0xFFFFFFF0) used to pass the bounds check and read past the
+// block. Found by the FS-05 replay fuzzing; must be skipped, not read.
+TEST_CASE("pcapng reader rejects wrapping captured length") {
+    std::vector<uint8_t> f;
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) f.push_back(uint8_t(v >> (8 * i))); };
+    auto u16 = [&](uint16_t v) { f.push_back(uint8_t(v)); f.push_back(uint8_t(v >> 8)); };
+    u32(0x0A0D0D0A); u32(28); u32(0x1A2B3C4D); u16(1); u16(0); u32(0xffffffff); u32(0xffffffff); u32(28);   // SHB
+    u32(1); u32(20); u16(1); u16(0); u32(0); u32(20);                                                      // IDB ethernet
+    // EPB: 20-byte header + 44 bytes of packet (Ethernet + IPv4 + UDP header) claiming a
+    // 0xFFFFFFF0 captured length and a 0xFFFF-byte UDP datagram.
+    const uint32_t epbLen = 12 + 20 + 44;
+    u32(6); u32(epbLen); u32(0); u32(0); u32(0); u32(0xFFFFFFF0); u32(64);
+    std::vector<uint8_t> pkt(44, 0);
+    pkt[12] = 0x08; pkt[13] = 0x00;                 // ethertype IPv4
+    pkt[14] = 0x45; pkt[14 + 9] = 17;               // IPv4, IHL 5, UDP
+    pkt[34 + 4] = 0xff; pkt[34 + 5] = 0xff;         // UDP length 65535
+    f.insert(f.end(), pkt.begin(), pkt.end());
+    u32(epbLen);
+    const std::string path = "/tmp/shunt_test_wrap.pcapng";
+    { FILE* fp = std::fopen(path.c_str(), "wb"); REQUIRE(fp); std::fwrite(f.data(), 1, f.size(), fp); std::fclose(fp); }
+    auto all = PcapngReader::readAll(path);
+    CHECK(all.empty());
     std::remove(path.c_str());
 }
 
