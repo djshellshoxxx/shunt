@@ -1,6 +1,6 @@
 # FS-06: Downbeat tap, fine nudge and confidence breakdown
 
-Status: draft 0.1. Depends on FS-00; best after FS-04 (actions bindable).
+Status: implemented (W2). Depends on FS-00; actions are bindable through FS-04 MIDI learn. Deviations at the end.
 Feature id `nudge`. UI `65-nudge.js`.
 
 ## Goal
@@ -86,3 +86,41 @@ text (>= 18 px), no modals, toast area with `aria-live`.
 
 On the simulator with a deliberately wrong bar, one tap fixes the bar lamp
 within one beat and survives restart through offset memory. Effort: M (3 days).
+
+## Deviations (as implemented)
+
+Files: `app/src/features/Nudge.{h,cpp}`, `ui/js/65-nudge.js`, `ui/css/65-nudge.css`,
+`tests/features/test_nudge.cpp`, `tests/features/nudge_ui_test.js` (N-T7, Playwright, not wired into
+ctest because CMake is frozen; run `node tests/features/nudge_ui_test.js --build-dir <dir>`).
+
+1. Enabled by default (`defaultEnabled()` true, as the settings block says). No ClockEngine change was
+   needed: `engine.track(master)` accessors suffice.
+2. Features have no `Core` handle, so the bar offset is applied through the control registry
+   (`baroffset.set.N`, same path and per-track memory as `Core::setBarOffset`). Latency is applied through
+   `latency.up/down` (0.5 ms steps) unless a `latency.set` Value action exists (0..1 maps to -20..+50 ms).
+   Core does not register `latency.set` yet (frozen file), so by default the server side of 0.1 ms steps is
+   carried in an accumulator (five `nudge.fine.plus` presses make one 0.5 ms step) and `nudge.reset` is
+   exact only to 0.5 ms. The UI avoids this: status field `fine` is false then and the +-0.1 buttons post to
+   the existing `/api/latency` route (exact, as on the Live page). Seam to add: `latency.set` + rounding to
+   0.1 in `Core::setLatencyMs`.
+3. `engine()` is only read in onEvent/onTick/status, so `handle()` works on a snapshot taken there. The
+   bar offset in effect when the timeline was published is captured in `onEvent` (Beat of the master), so a
+   tap issued between an offset change and the next beat still computes the right raw beat. A snapshot older
+   than 1 s answers 409 "no timing data". `handle()` takes time from an injectable monotonic clock
+   (`setClock`, default `net::monotonicNowNs`).
+4. Rate-limited taps answer 429 `{ok:false,ignored:true}` (the UI ignores them silently). Refusal texts:
+   "no master", "no timing data", "bar not available: turn off beat only", "bar not available for this
+   player", "not locked yet", "confidence too low", "tap closer to a beat", "nothing to undo".
+5. Undo is also cleared on master change and when the master's track (rekordbox id + slot) changes.
+6. "Value at the last Save" for `nudge.reset` is taken as the latency first seen after start (the value
+   loaded from config.json, which is what the last save wrote); there is no separate Save action. Default 1.0
+   when no engine data was seen yet.
+7. The change log is built by watching the engine's latency each tick, so it also records changes made on
+   the Live page or via `/api/latency`; newest first, 20 entries, wall-clock time.
+8. Status keys: `hitRate, rmsMs, madMs, state, locked, formula` as specified, plus `confidence, jitterScore,
+   hits, hitsOf, barOffset, latencyMs, fine, tapReady, tapBlocked, canUndo, tapLatencyMs, wakeLock, haptics,
+   log`. (`enabled` and `error` are added by the host.) Extra routes: `POST reset`, `GET settings`.
+9. Navigating directly to `#/nudge` on a fresh load bounces to Live (page visibility is decided before
+   `/api/features` returns; `00-core.js` is frozen). Use the nav link.
+10. ASan reports an alloc-dealloc-mismatch inside `std::stable_sort` in `FeatureRegistry::createAll` (a
+    libstdc++ false positive, not FS-06 code); run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0`.
