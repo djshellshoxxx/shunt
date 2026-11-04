@@ -70,6 +70,7 @@ private:
     uint8_t counter_ = 0;
     int64_t stateEnteredNs_ = 0, nextActionNs_ = 0;
     uint32_t sent_ = 0;
+    bool firstLatched_ = false, firstOnNetwork_ = false;
     std::string failure_;
     uint8_t buf_[128];
 };

@@ -31,7 +31,7 @@ const std::array<uint8_t, 6> kMac{0x00, 0xe0, 0x36, 0x12, 0x34, 0x56};
 
 TEST_CASE("P-T1 keep-alive 0x06 decodes every field") {
     Golden g(54, 0x06, "CDJ-3000", true);
-    g.u8(0x20, 0x01).u8(0x21, 0x01).u16(0x22, 0x0036).u8(0x24, 3).u8(0x25, 0x01)
+    g.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 3).u8(0x25, 0x01)
      .bytes(0x26, {0x00, 0xe0, 0x36, 0x12, 0x34, 0x56}).u32(0x2c, 0xa9fe0a03).u8(0x30, 5).u8(0x34, 0x01).u8(0x35, 0x64);
     auto ev = parseAnnounce(g.b.data(), g.b.size(), 1234, 0xa9fe0a03);
     REQUIRE(ev.has_value());
@@ -44,7 +44,7 @@ TEST_CASE("P-T1 keep-alive 0x06 decodes every field") {
     CHECK_EQ(ev->keepAlive.ip, 0xa9fe0a03u);
     CHECK_EQ(ev->keepAlive.peerCount, 5);
     CHECK(ev->keepAlive.cdj3000Compatible);
-    g.u8(0x35, 0x00).u8(0x21, 0x02);
+    g.u8(0x35, 0x00).u8(0x34, 0x02);
     ev = parseAnnounce(g.b.data(), g.b.size(), 0);
     REQUIRE(ev.has_value());
     CHECK(!ev->keepAlive.cdj3000Compatible);
@@ -258,10 +258,47 @@ TEST_CASE("P-T2 keep-alive builder: 54 bytes, documented layout, 0x35 == 0x64") 
     const size_t n = buildKeepAlive(out, p);
     CHECK_EQ(n, kKeepAliveLen);
     Golden g(54, 0x06, "Shunt", true);
-    g.u8(0x20, 0x01).u8(0x21, 0x01).u16(0x22, 0x0036).u8(0x24, 7).u8(0x25, 0x01)
+    g.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 7).u8(0x25, 0x01)
      .bytes(0x26, {0x00, 0xe0, 0x36, 0x12, 0x34, 0x56}).u32(0x2c, 0xc0a80105).u8(0x30, 6).u8(0x34, 0x01).u8(0x35, 0x64);
     CHECK(std::memcmp(out, g.b.data(), 54) == 0);
     CHECK_EQ(out[0x35], 0x64);
+}
+
+// Regression: byte 0x21 is a protocol variant, not the device kind. Every device on the
+// 2026-07-29 CDJ-2000nexus captures (CDJs, DJM and a virtual CDJ) sends 0x02 there in
+// keep-alives; the kind is at 0x34. Before this fix CDJs were classified as mixers.
+TEST_CASE("P-T1 keep-alive kind comes from 0x34, not 0x21") {
+    Golden cdj(54, 0x06, "CDJ-2000nexus", true);
+    cdj.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 2).u8(0x25, 0x02).u8(0x34, 0x01);
+    auto ev = parseAnnounce(cdj.b.data(), cdj.b.size(), 0);
+    REQUIRE(ev.has_value());
+    CHECK(ev->keepAlive.kind == DeviceKind::CDJ);
+    Golden djm(54, 0x06, "DJM-2000nexus", true);
+    djm.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 0x21).u8(0x25, 0x01).u8(0x34, 0x02);
+    ev = parseAnnounce(djm.b.data(), djm.b.size(), 0);
+    REQUIRE(ev.has_value());
+    CHECK(ev->keepAlive.kind == DeviceKind::Mixer);
+}
+
+TEST_CASE("P-T2 byte 0x21 variant per packet type (legacy vs CDJ-3000 compatible)") {
+    uint8_t out[128];
+    buildHello(out, "Shunt", false);                 CHECK_EQ(out[0x21], kVariantLegacy);
+    buildHello(out, "Shunt", true);                  CHECK_EQ(out[0x21], kVariantHello3000);
+    CHECK_EQ(out[0x24], 0x01); CHECK_EQ(out[0x25], 0x64);
+    buildClaimStage1(out, "Shunt", 1, kMac, false);  CHECK_EQ(out[0x21], kVariantLegacy);
+    buildClaimStage1(out, "Shunt", 1, kMac);         CHECK_EQ(out[0x21], kVariantClaim3000);
+    CHECK_EQ(out[0x25], 0x01);
+    buildClaimStage2(out, "Shunt", 1, kMac, 7, 1, 1); CHECK_EQ(out[0x21], kVariantClaim3000);
+    buildClaimStage3(out, "Shunt", 7, 1);            CHECK_EQ(out[0x21], kVariantClaim3000);
+    buildClaimStage3(out, "Shunt", 7, 1, false);     CHECK_EQ(out[0x21], kVariantLegacy);
+    buildDefend(out, "Shunt", 7);                    CHECK_EQ(out[0x21], kVariantLegacy);
+    KeepAliveParams p;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x21], kVariantLegacy);
+    CHECK_EQ(out[0x25], 0x01); CHECK_EQ(out[0x34], 0x01); CHECK_EQ(out[0x35], 0x64);
+    p.firstOnNetwork = true;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x25], 0x02);
+    p.kind = DeviceKind::Mixer;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x34], 0x02);
 }
 
 TEST_CASE("P-T2 claim builders produce documented lengths") {

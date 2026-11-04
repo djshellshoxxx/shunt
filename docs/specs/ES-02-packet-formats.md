@@ -30,15 +30,15 @@ Log and count, never throw.
 | 0x0b | 1 | 0x00 |
 | 0x0c | 20 | name |
 | 0x20 | 1 | 0x01 |
-| 0x21 | 1 | kind: 0x01 CDJ, 0x02 mixer, 0x03 rekordbox |
+| 0x21 | 1 | protocol variant, **not the kind**: 0x02 in keep-alives from every device (verified on real CDJ-2000nexus and DJM-2000nexus captures); CDJ-3000-compatible senders use 0x04 in the hello and 0x03 in claim stages 1 to 3 |
 | 0x22 | 2 | 0x0036 |
 | 0x24 | 1 | device number |
-| 0x25 | 1 | 0x01 CDJ, 0x02 mixer |
+| 0x25 | 1 | latched at start-up: 0x02 if the device was first on the network, else 0x01 (not a kind discriminator) |
 | 0x26 | 6 | MAC |
 | 0x2c | 4 | IPv4 |
 | 0x30 | 1 | peer count |
 | 0x31 | 3 | 0 |
-| 0x34 | 1 | 0x01 CDJ, 0x02 mixer |
+| 0x34 | 1 | device kind: 0x01 CDJ, 0x02 mixer |
 | 0x35 | 1 | 0x00 legacy; **0x64 required for CDJ-3000 compatibility** |
 
 Builder: Shunt sends this with name "Shunt", kind 0x01, our number, MAC,
@@ -48,7 +48,7 @@ IP, peer count = devices seen including self, 0x35 = 0x64.
 
 | Type | Len | Notable fields |
 |---|---|---|
-| 0x0a hello | 0x25 (0x26 in CDJ-3000-compatible form) | name at 0x0c; kind at 0x20 |
+| 0x0a hello | 0x25 (0x26 in CDJ-3000-compatible form) | name at 0x0c; 0x20 = 0x01; kind at 0x24 (0x01 CDJ, 0x02 mixer); CDJ-3000 form has 0x64 at 0x25 |
 | 0x00 stage 1 | 0x2c | counter N (1..3) at 0x24; MAC at 0x26 |
 | 0x02 stage 2 | 0x32 | IP at 0x24, MAC at 0x28, number at 0x2e, counter at 0x2f, auto flag at 0x31 (0x01 auto, 0x02 specific) [field order per dysentery startup.adoc; verify] |
 | 0x04 stage 3 | 0x2a | number at 0x24, counter at 0x25 |
