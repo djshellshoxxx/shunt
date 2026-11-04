@@ -86,10 +86,10 @@ current; tick boxes as work lands.
 ## Feature wave (specs FS-00 to FS-09, plan in `docs/BUILD-PLAN-FEATURES.md`)
 
 - [x] PR 0: extension points (FS-00) and PR T0: CI sanitizers, simulator scenarios, fixtures (FS-TEST)
-- [ ] FS-01 On-air routing and clock mute
+- [x] FS-01 On-air routing and clock mute
 - [ ] FS-02 Key clash alarm
 - [ ] FS-03 Phrase countdown (after spike P0)
-- [ ] FS-04 MIDI learn
+- [x] FS-04 MIDI learn
 - [ ] FS-05 Replay a capture
 - [ ] FS-06 Downbeat tap, nudge and confidence breakdown
 - [ ] FS-07 Venue profiles

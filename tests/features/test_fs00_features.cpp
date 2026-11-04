@@ -200,8 +200,16 @@ TEST_CASE("FS00-T5 dummy feature lifecycle: init order, settings, status, routes
 
     HttpResponse r = handleRequest(core, req("GET", "/api/features"));
     CHECK_EQ(r.status, 200);
-    CHECK(r.body == "[{\"id\":\"alpha\",\"enabled\":false,\"error\":\"\"},{\"id\":\"dummy\",\"enabled\":false,\"error\":\"\"},"
-                    "{\"id\":\"zeta\",\"enabled\":false,\"error\":\"\"}]");
+    // Real features registered with SHUNT_REGISTER_FEATURE also appear in the list,
+    // so assert only the dummy entries and their alphabetical order.
+    {
+        const size_t a = r.body.find("{\"id\":\"alpha\",\"enabled\":false,\"error\":\"\"}");
+        const size_t b = r.body.find("{\"id\":\"dummy\",\"enabled\":false,\"error\":\"\"}");
+        const size_t z = r.body.find("{\"id\":\"zeta\",\"enabled\":false,\"error\":\"\"}");
+        CHECK(a != std::string::npos && b != std::string::npos && z != std::string::npos);
+        CHECK(a < b && b < z);
+        CHECK(r.body.front() == '[' && r.body.back() == ']');
+    }
     Json st = statusOf(core, "dummy");
     CHECK(st.get("enabled").type() == Json::Bool && !st.get("enabled").asBool());
     CHECK(st.get("error").asString() == "");

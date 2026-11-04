@@ -31,6 +31,10 @@ On a real network use `--iface eth0` (the interface wired to the players).
 Pages: Live, Outputs, Tracklist, Phase scope, Compatibility, Diagnostics;
 press `S` for stage mode. `/overlay` is an OBS browser source.
 
+**On-air routing and clock mute** (off by default, Outputs page, MIDI card): Shunt tracks which decks are on air (the mixer's on-air packets win while they arrive, otherwise each player's own on-air bit) and shows "ON AIR 1, 3" or "MUTED" on the Live page. With "Stop the clock when nothing is on air", MIDI clock sends Stop once after nothing has been on air for the hold time (4 s by default) and restarts with Start or Continue on the next bar when a deck comes back; Link keeps running. A channel map covers players not plugged into the mixer channel with their number. OSC gets `/shunt/onair/any` and `/shunt/mute` (QLab: optional cues); see `docs/specs/FS-01-onair-routing-and-clock-mute.md`.
+
+**MIDI learn** (off by default, page "MIDI learn"): bind any control action (bar offset, beat only, set marker, latency) to a MIDI note, controller or program change from a footswitch or pad controller. Press Learn, hit the control within 15 s; conflicts ask before replacing. Linux reads ALSA raw devices (`/dev/snd/midiC*D*`) directly; see `docs/specs/FS-04-midi-learn.md`.
+
 Copyright and licence: all rights reserved (`LICENSE`).
 
 ## Documents

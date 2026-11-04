@@ -1,6 +1,6 @@
 # FS-04: MIDI learn
 
-Status: draft 0.1. Depends on FS-00 (ControlRegistry). Feature id `midilearn`. UI `63-midilearn.js`.
+Status: implemented. Depends on FS-00 (ControlRegistry). Feature id `midilearn`. UI `63-midilearn.js`.
 
 ## Goal
 
@@ -92,3 +92,17 @@ thread (actions are thread-safe by FS-00).
 
 A USB footswitch cycles the bar offset on a Pi and a Linux laptop; stop and
 restart leave no stuck thread (TSan clean). Effort: M (3 to 4 days).
+
+## Deviations (as implemented)
+
+1. Files: parser, `FdMidiInPort`, `MidiInThread` in `out/src/MidiIn.cpp`; `BindingTable`, `MidiLearnModel` (both pure, synthetic time) and the feature in `app/src/features/MidiLearn.{h,cpp}`. No ALSA library: the code base has none (clock output reads raw nodes), so input is a raw `/dev/snd/midiC*D*` fd (also accepts FIFOs, used by tests). ALSA seq input is not implemented.
+2. The input thread polls with a 20 ms timeout and reopens a lost device every second; `MidiInThread` is not "polled from the Core loop".
+3. 14-bit CC (MSB/LSB pairs) is not implemented; the spec gives no behaviour for it.
+4. Learn binds channel `any` by default; body `exactChannel:true` binds the channel received. Channels are 0..15 in JSON and shown 1..16 in text ("CC 64, ch 1").
+5. Overlap rule: two bindings conflict when type and number match and the channels are equal or either is `any`. One binding per action. On load, overlapping entries resolve last-wins with a warning.
+6. Conflict flow: a learn that hits a conflict without `replace` ends with `lastLearn:"conflict"` and `state.conflict{action,text,with}`; `POST learn {action, replace:true}` for the same action then applies the captured message at once (the UI Replace button). `POST learn` itself returns 409 when the feature is disabled or 128 bindings exist.
+7. `state` has extra keys: `enabled`, `open`, `inputError`, `lastLearn`, `conflict`, `actions` (id, label, kind, group), `warnings`; bindings carry `text`, `missing`. `status.features.midilearn` carries `port, open, inputError, learning, lastMessage, bindings, rev, messages` (the host owns `error`).
+8. `POST port` accepts only an empty string or a port listed by `listMidiPorts()`. A port set in the settings file may be any absolute path (no `..`) to a character device or FIFO; regular files are refused.
+9. The page is always in the nav (no `featureId`) because it holds the enable switch; order 22.
+10. Mode is stored per binding; when absent it is derived from the action kind (Trigger, Toggle, Value gives trigger, toggle, absolute). Note absolute: Note On velocity/127, Note Off gives 0. Program change absolute: number/127.
+11. Not verified on hardware: a real USB footswitch on a Pi or laptop, device unplug/replug on a real rawmidi node.
