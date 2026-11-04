@@ -56,12 +56,9 @@ if(WIN32)
 endif()
 
 # ---- shunt_out: OSC, MIDI clock, Link logic, output manager (no JUCE, no third-party code)
-add_library(shunt_out STATIC
-  out/src/Osc.cpp
-  out/src/Midi.cpp
-  out/src/Link.cpp
-  out/src/OutputManager.cpp
-)
+# Globbed so features add files (MidiIn, PulseGenerator, ...) without CMake edits.
+file(GLOB SHUNT_OUT_SOURCES CONFIGURE_DEPENDS out/src/*.cpp)
+add_library(shunt_out STATIC ${SHUNT_OUT_SOURCES})
 target_include_directories(shunt_out PUBLIC out/include)
 target_link_libraries(shunt_out PUBLIC shunt_clock shunt_net)
 option(SHUNT_WITH_LINK "Build the Ableton Link SDK binding (needs Link.hpp on the include path)" OFF)
