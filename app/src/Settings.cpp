@@ -18,7 +18,7 @@ Settings Settings::fromJson(const Json& j) { return fromJson(j, Settings{}); }
 Settings Settings::fromJson(const Json& j, const Settings& base) {
     Settings s = base;
     if (!j.isObject()) return s;
-    for (auto& kv : j.members()) s.raw[kv.first] = kv.second;
+    s.raw.merge(j);   // deep merge (FS-00 section 2): features.<a> patches never erase features.<b>
     if (j.has("interface")) s.interfaceName = j.get("interface").asString("");
     if (j.has("mode")) s.mode = j.get("mode").asString("follow") == "passive" ? "passive" : "follow";
     if (j.has("deviceNumber")) s.deviceNumber = clampv(j.get("deviceNumber").asInt(5), 1, 6);

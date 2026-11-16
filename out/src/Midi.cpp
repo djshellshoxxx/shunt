@@ -29,7 +29,28 @@ void MidiClockGenerator::poll(int64_t nowNs, int64_t lookaheadNs, const clock::T
         lastEmitNs_ = t;
         out.push_back(m);
     };
+    // FS-01 mute: applied on the first poll after setMuted; muted wins over everything below.
+    if (muted_ && !muteApplied_) {
+        muteApplied_ = true;
+        if (locked_ && !stopped_) push(nowNs, 0xFC);
+        pendingStart_ = pendingContinue_ = alignBar_ = pendingUnmute_ = false;
+    } else if (!muted_ && muteApplied_) {
+        muteApplied_ = false;
+        pendingUnmute_ = locked_;
+    }
+    if (muteApplied_) return;
     if (!tl.usable()) return;
+    auto armUnmute = [&] {
+        if (unmuteMode_ == UnmuteMode::Start) pendingStart_ = true; else pendingContinue_ = true;
+        alignBar_ = true;
+    };
+    if (pendingUnmute_) {
+        pendingUnmute_ = false;
+        lastReset_ = tl.resetSequence;   // a reset during the mute needs no SPP or extra Start
+        resync(nowNs, tl);
+        if (opt_.pause == MidiClockOptions::Stop && !tl.playing) { stopped_ = true; resumeAfterMute_ = true; }
+        else { stopped_ = false; armUnmute(); }
+    }
 
     if (!locked_) {
         locked_ = true;
@@ -53,7 +74,10 @@ void MidiClockGenerator::poll(int64_t nowNs, int64_t lookaheadNs, const clock::T
 
     if (opt_.pause == MidiClockOptions::Stop) {
         if (!tl.playing && !stopped_) { push(nowNs, 0xFC); stopped_ = true; pendingContinue_ = false; return; }
-        if (tl.playing && stopped_) { stopped_ = false; pendingContinue_ = true; resync(nowNs, tl); }
+        if (tl.playing && stopped_) {
+            stopped_ = false; resync(nowNs, tl);
+            if (resumeAfterMute_) { resumeAfterMute_ = false; armUnmute(); } else pendingContinue_ = true;
+        }
     }
     if (stopped_) return;
 
@@ -66,8 +90,9 @@ void MidiClockGenerator::poll(int64_t nowNs, int64_t lookaheadNs, const clock::T
         const bool beatBoundary = nextTick_ % 24 == 0;
         if (beatBoundary) {
             const int inBar = beatInBarOf(nextTick_ / 24, tl);
-            if (pendingStart_ && (!tl.barKnown || inBar == 1)) { push(int64_t(t), 0xFA); pendingStart_ = false; }
-            else if (pendingContinue_) { push(int64_t(t), 0xFB); pendingContinue_ = false; }
+            const bool barOk = !tl.barKnown || inBar == 1;
+            if (pendingStart_ && barOk) { push(int64_t(t), 0xFA); pendingStart_ = false; alignBar_ = false; }
+            else if (pendingContinue_ && (!alignBar_ || barOk)) { push(int64_t(t), 0xFB); pendingContinue_ = false; alignBar_ = false; }
         }
         if (!pendingStart_ && !pendingContinue_) push(int64_t(t), 0xF8);
         ++nextTick_;

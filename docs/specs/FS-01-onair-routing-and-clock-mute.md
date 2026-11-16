@@ -1,6 +1,6 @@
 # FS-01: On-air routing and clock mute
 
-Status: draft 0.1. Depends on FS-00. Feature id `onair`. UI file `60-onair.js`.
+Status: implemented (W1). Section "As implemented" and "Deviations" at the end are the reference. Depends on FS-00. Feature id `onair`. UI file `60-onair.js`.
 
 ## Goal and users
 
@@ -134,3 +134,128 @@ All tests pass under ASan/UBSan and TSan; with `midiMute: stop` a real
 byte stream captured from the MIDI port shows Stop/Start around the scripted
 gap; no change in behaviour when the feature is disabled (golden status JSON).
 Effort: M (3 to 4 days).
+
+## As implemented
+
+Files: `app/src/features/OnAir.{h,cpp}` (`OnAirAggregator`, `OnAirSettings`,
+`OnAirFeature`, registered as `onair`), `ui/js/60-onair.js`,
+`ui/css/60-onair.css`, `tests/features/test_onair.cpp`; shared edits in
+`out/include/shunt/out/{Midi,Osc,OutputManager}.h`, `out/src/{Midi,OutputManager}.cpp`.
+
+**Aggregator.** Decks 1..6 only. A deck is present after its first status
+packet and until a `Device Left` event (or a `Joined` event of kind
+Rekordbox, whose status packets are then ignored). `deckOn(d)`: present and,
+while the last mixer packet is at most 2 s old, `channels[channelMap[d]-1] != 0`
+(channels beyond the packet's 4 or 6 count are off); else the player's
+F-byte bit. `dataSeen` becomes true on the first mixer packet or the first
+player bit that is on (so a setup whose bits are always 0 never mutes).
+The hold timer runs only while `midiMute` is `stop`, `dataSeen`, at least one
+deck is present and `any` is false; it restarts when any of these comes back
+(e.g. a player arrives). `tick(now)` returns edges `DeckChanged(deck, on)`,
+`AnyChanged(on)`, `MuteChanged(muted)` in order; it allocates only when there
+are edges.
+
+**MIDI generator** (`out::MidiClockGenerator`): `setMuted(bool)`,
+`setUnmuteMode(out::UnmuteMode::Start|Continue)`, `muted()`. The first poll
+after muting sends one Stop (0xFC) if the clock was running (not before the
+first lock, not when already stopped by `pause: stop`), then nothing. The
+first poll after unmuting resyncs to the timeline (a reset during the mute
+needs no SPP or extra Start) and arms Start or Continue for the next beat
+with beat-in-bar 1 (next beat when `!barKnown`); clocks resume with it. When
+unmuted while paused with `pause: stop`, the clock stays stopped and the
+restart message on play follows the unmute mode.
+
+**OutputManager** (all thread-safe; the first three are atomic stores, safe
+under the Core lock):
+
+```cpp
+void setMute(bool muted);                 // read by the output thread each loop -> gen.setMuted
+void setUnmuteMode(out::UnmuteMode m);
+bool muteRequested() const;
+void setLegacyOnAirOsc(bool on);          // false: Core's OutputEvent::OnAir (/shunt/onair) dropped
+// OscExtras hook for FS-02, FS-03 and later features:
+bool sendOsc(const std::string& address, std::vector<OscArg> args = {});
+OscProfile oscProfile() const;
+bool oscEnabled() const;
+```
+
+`sendOsc` validates the address (must start with `/`), returns false and
+drops the message while OSC is disabled or when 256 messages are queued, and
+otherwise queues it for the output thread, which sends it with
+`OscOutput::send(address, args)` (new public method; sends under every
+profile, still gated by the enabled flag). It takes only the OutputManager
+mutex, so it may be called from feature `onEvent`/`onTick` (Core lock held)
+or any other thread; features choose addresses per profile with
+`oscProfile()`.
+
+**Feature wiring.** `onEvent` feeds PlayerStatus, OnAir (0x03) and Device
+events; `onTick` runs `tick`, stores `setMute(enabled && muted)` and sends
+OSC for the edges after releasing its own mutex. While enabled it calls
+`setLegacyOnAirOsc(false)` and sends per-deck `/shunt/onair i deck i state`
+itself (Generic and MagicQ, when `oscPerDeck`) from the aggregated state
+(mixer or player bits). Generic and MagicQ also get `/shunt/onair/any i` on
+change and `/shunt/mute i` on mute edges; QLab gets `/cue/<qlabOnAirCue>/start`
+when `any` goes true and `/cue/<qlabMuteCue>/start` on mute (0 = off);
+Resolume and grandMA3 get nothing. Disabling (or `shutdown`) clears the mute
+and restores the legacy per-deck messages; enabling starts with a fresh
+aggregator.
+
+**Settings** `features.onair`: `enabled` (bool, false), `holdMs` (number,
+clamped 500..30000, wrong type 4000), `midiMute` (`off`|`stop`, other values
+`off`), `unmuteWith` (`start`|`continue`, other `start`), `channelMap`
+(array of exactly 6, else identity; each entry rounded and clamped 1..6, a
+non-number entry is its identity value), `oscPerDeck` (bool, true),
+`qlabOnAirCue`, `qlabMuteCue` (number clamped 0..9999, else 0).
+
+**Status** `status.features.onair`: `any`, `muted`, `dataSeen` (bool),
+`source` (`mixer`|`players`|`none`), `decks` (`[{deck, on}]` for present
+decks), `sinceMs` (ms since the last `any` or mute edge, as of the last
+tick), plus host keys `enabled`, `error`.
+
+**Routes**: `GET /api/f/onair/settings` returns the validated settings
+object (same keys as above); other methods 405; other subpaths 404. Settings
+are written with `POST /api/config {"features":{"onair":{...}}}`.
+
+**UI**: widget in `outputs-midi` (always shown, so the feature can be
+switched on): "Follow on-air state", "Stop the clock when nothing is on air",
+hold seconds, "Restart with Start / Continue", channel map editor (six
+selects, BUILD-PLAN risk R5); widget in `outputs-osc`: per-deck messages and
+the two QLab cues. Each has an "Apply on-air settings" button (the page's own
+Save does not include features). Live valve chip (`featureId: onair`):
+"ON AIR 1, 3", "OFF AIR", "NO ON-AIR DATA", or amber "MUTED m:ss".
+
+**Tests** (`tests/features/test_onair.cpp`): OA-T1 hold, OA-T2 precedence and
+staleness, OA-T3 channel map and map validation, OA-T4 no data / no player,
+OA-T5 deck leaves, O-T8 generator mute (Start, Continue, bar unknown, pause
+interplay, mute before lock), OA-T6 OSC per profile, oscPerDeck, QLab,
+legacy gate, OA-T7 settings validation, status shape and routes through
+Core, OA-T8 `sendOsc` hook (sink, disabled no-op, other thread, queue bound),
+OA-T9/T9b the `onair` timeline built with `FixtureBuilder` (mixer packets,
+and player bits only with Continue) fed through an unstarted `NetworkStack`,
+`ClockEngine`, the feature and `MidiClockGenerator` with synthetic time: one
+Stop at 34.0 s +- 0.4, no clocks while muted, restart on a downbeat within a
+bar after 36 s; with `midiMute: off` no Stop at all. OA-T10 `onTick` budget.
+
+## Deviations
+
+1. QLab cue numbers `qlabOnAirCue`, `qlabMuteCue` live in `features.onair`,
+   not in `osc` (`Settings.cpp` is frozen and features only see their own
+   settings object).
+2. The pure class's `OnAirConfig` has `muteEnabled` (from `midiMute`), so
+   `muted` is never true with `midiMute: off` and no `/shunt/mute` is sent;
+   `Edge` also has `DeckChanged(deck)` for the per-deck OSC messages.
+3. `dataSeen` needs a mixer packet or at least one player bit that is on,
+   not merely a status packet (bits are 0 on setups without on-air support).
+4. `any` and mute are deck based: a mixer channel that is up with no Pioneer
+   player mapped to it (e.g. a turntable) does not count as on air.
+5. "OSC follows MIDI transport semantics" is implemented as the `/shunt/mute`
+   edge message only; OSC beat messages keep running while muted, like Link.
+6. Per-deck `/shunt/onair` moved from Core (mixer packets only) to the feature
+   while it is enabled, so it also reflects player bits and the channel map.
+   Core still writes `Live::onAir` for the device JSON (`Core.cpp` frozen);
+   the aggregated per-deck view is `status.features.onair.decks`.
+7. The hook is `OutputManager::sendOsc` plus `oscProfile()`/`oscEnabled()`;
+   no `OscOutput::addExtra` callback registry was added (one queueing entry
+   point is enough and keeps all sends on the output thread).
+8. A real MIDI byte capture with hardware is not part of CI; the scenario
+   test checks the generator's byte stream instead (see the acceptance list).

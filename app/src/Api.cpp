@@ -1,3 +1,4 @@
+// Route table (RS-07 section 8) plus the FS-00 extension routes /api/f/<id>/..., /api/features, /api/controls.
 #include "shunt/app/Api.h"
 #include <string>
 
@@ -39,6 +40,14 @@ HttpResponse html(const unsigned char* data, size_t n) {
 HttpResponse handleRequest(Core& core, const HttpRequest& req) {
     const std::string& p = req.path;
     const bool post = req.method == "POST";
+    static const std::string kFeature = "/api/f/";
+    if (p.compare(0, kFeature.size(), kFeature) == 0) {   // FS-00: /api/f/<id>/<rest> -> feature.handle(req, "<rest>")
+        const size_t slash = p.find('/', kFeature.size());
+        const std::string id = p.substr(kFeature.size(), slash == std::string::npos ? std::string::npos : slash - kFeature.size());
+        const std::string rest = slash == std::string::npos ? std::string() : p.substr(slash + 1);
+        if (auto r = core.featureRequest(id, rest, req)) return *r;
+        return error(404, "not found");
+    }
     if (req.method != "GET" && req.method != "HEAD" && !post) return error(405, "method not allowed");
 
     if (!post) {
@@ -51,6 +60,8 @@ HttpResponse handleRequest(Core& core, const HttpRequest& req) {
         if (p == "/api/midi-ports") return json(core.midiPorts());
         if (p == "/api/tracklist") return json(core.tracklist());
         if (p == "/api/compat") return json(core.compat());
+        if (p == "/api/features") return json(core.features());
+        if (p == "/api/controls") return json(core.controlsList());
         if (p == "/api/export") {
             HttpResponse r;
             std::string name;
@@ -97,6 +108,13 @@ HttpResponse handleRequest(Core& core, const HttpRequest& req) {
     if (p == "/api/setstart") { core.markSetStart(); return ok(); }
     if (p == "/api/session/clear") { core.clearSession(); return ok(); }
     if (p == "/api/record") { core.setRecording(body.get("on").asBool()); return ok(); }
+    static const std::string kControl = "/api/controls/";
+    if (p.compare(0, kControl.size(), kControl) == 0) {
+        const Json& v = body.get("value");
+        if (!v.isNull() && v.type() != Json::Number) return error(400, "value must be a number 0..1");
+        if (!core.controls().invoke(p.substr(kControl.size()), v.isNull() ? 1.0 : v.asNumber())) return error(404, "unknown control");
+        return ok();
+    }
     return error(404, "not found");
 }
 

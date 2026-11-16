@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -78,7 +79,11 @@ int replay(const std::string& path, double speed, bool verbose) {
     Stats st;
     const int64_t base = net::monotonicNowNs();
     const int64_t ts0 = captured.front().timestampNs;
+    size_t ignored = 0;
     for (const auto& d : captured) {
+        // Captures carry unrelated traffic (mDNS, DHCP, NFS, SSDP); the live stack only
+        // ever binds 50000..50002, so replay feeds exactly those ports.
+        if (d.dstPort < 50000 || d.dstPort > 50002) { ++ignored; continue; }
         const int64_t recvNs = base + int64_t(double(d.timestampNs - ts0) / speed);
         if (speed > 0) {
             const int64_t now = net::monotonicNowNs();
@@ -90,8 +95,8 @@ int replay(const std::string& path, double speed, bool verbose) {
         net::Event ev;
         while (stack.pop(ev)) handleEvent(ev, engine, stack, st, verbose);
     }
-    std::printf("replayed %zu datagrams: %llu parsed, %llu parse errors, %zu devices, %zu master changes, %zu master beats, bpm %.2f\n",
-                captured.size(), (unsigned long long)stack.counters().parsed, (unsigned long long)stack.counters().parseErrors,
+    std::printf("replayed %zu datagrams (%zu other ports ignored): %llu parsed, %llu parse errors, %zu devices, %zu master changes, %zu master beats, bpm %.2f\n",
+                captured.size() - ignored, ignored, (unsigned long long)stack.counters().parsed, (unsigned long long)stack.counters().parseErrors,
                 st.devicesJoined, st.masterChanges, st.beats, st.lastBpm);
     return 0;
 }
@@ -156,8 +161,22 @@ int main(int argc, char** argv) {
     pid_t simPid = 0;
     if (!simPath.empty()) {
         std::string destStr = net::ipToString(chosen.address);
-        const char* args[] = {simPath.c_str(), "--dest", destStr.c_str(), "--scenario", "handoff", "--duration", "12", "--jitter-ms", "0.5", nullptr};
-        if (posix_spawn(&simPid, simPath.c_str(), nullptr, nullptr, const_cast<char**>(args), environ) != 0) {
+        // SHUNT_SIM_LAUNCHER (e.g. "qemu-aarch64 -L /usr/aarch64-linux-gnu") prefixes the
+        // simulator command line, for cross-built tests under QEMU user mode.
+        std::vector<std::string> argvStr;
+        if (const char* launcher = std::getenv("SHUNT_SIM_LAUNCHER")) {
+            std::string word;
+            for (const char* c = launcher;; ++c) {
+                if (*c == ' ' || *c == '\0') { if (!word.empty()) argvStr.push_back(word); word.clear(); if (!*c) break; }
+                else word += *c;
+            }
+        }
+        for (const char* a : {simPath.c_str(), "--dest", destStr.c_str(), "--scenario", "handoff", "--duration", "12", "--jitter-ms", "0.5"})
+            argvStr.emplace_back(a);
+        std::vector<char*> args;
+        for (auto& a : argvStr) args.push_back(a.data());
+        args.push_back(nullptr);
+        if (posix_spawnp(&simPid, args[0], nullptr, nullptr, args.data(), environ) != 0) {
             std::fprintf(stderr, "cannot spawn %s\n", simPath.c_str());
             return 1;
         }

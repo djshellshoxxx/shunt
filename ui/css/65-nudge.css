@@ -1,0 +1,37 @@
+/* FS-06 Nudge pad (phone first). Original Shunt code. */
+.nd{display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 110px);max-width:760px;margin:0 auto;font-size:18px}
+.nd-top{display:flex;align-items:center;justify-content:space-between;gap:12px 18px;flex-wrap:wrap;padding:12px 16px}
+.nd-bpm{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
+.nd .lamps{gap:8px}
+.nd .lamp{width:36px}
+.nd-state{color:var(--dim);font-size:18px;text-transform:capitalize}
+.nd-mid{display:flex;flex-direction:column;gap:6px;flex:1 0 auto}
+.nd-tap{min-height:40vh;width:100%;border-radius:24px;border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--card));color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;transition:background .06s,transform .06s}
+.nd-tap:active{background:var(--accent);color:#04120f;transform:scale(.985)}
+.nd-tap.blocked{border-color:var(--line2);background:var(--card);color:var(--dim)}
+.nd-tapt{font:800 clamp(56px,16vw,120px)/1 var(--font);letter-spacing:.08em}
+.nd-tapsub{font-size:18px;color:var(--dim)}
+.nd-tap:active .nd-tapsub{color:#04120f}
+.nd-why{min-height:26px;color:var(--warn);font-size:18px;text-align:center}
+.nd-bot{display:flex;flex-direction:column;gap:12px}
+.nd-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.nd-row2{grid-template-columns:1fr auto auto;align-items:center}
+.nd-step{min-height:64px;font-size:22px;font-weight:650;touch-action:manipulation;user-select:none;-webkit-user-select:none;padding:8px 4px}
+.nd-undo,.nd-reset{min-height:52px;min-width:88px;font-size:18px}
+.nd-undo:disabled{opacity:.4;cursor:default}
+.nd-lat{font-size:18px;overflow-wrap:anywhere}
+.nd-toast{min-height:28px;font-size:18px;text-align:center}
+.nd-toast.ok{color:var(--good)} .nd-toast.err{color:var(--bad)}
+.nd-conf{padding:14px 16px}
+.nd-bar{margin-bottom:12px}
+.nd-barh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.nd-barh small{color:var(--faint);font-size:14px}
+.nd-track{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin:4px 0}
+.nd-track i{display:block;height:100%;width:0;border-radius:99px;background:var(--accent);transition:width .2s}
+.nd-track i.mid{background:var(--warn)} .nd-track i.bad{background:var(--bad)}
+.nd-sent{font-size:18px;color:var(--text)}
+.nd-formula{color:var(--dim);font-size:16px;overflow-wrap:anywhere}
+.nd-logbox summary{cursor:pointer;color:var(--dim);padding:8px 0}
+.nd-log{margin:0;padding-left:22px;font-size:15px;color:var(--dim);max-height:240px;overflow:auto}
+.nd-none{list-style:none;margin-left:-22px}
+@media (max-width:420px){.nd-bpm{font-size:30px}.nd-step{font-size:20px}.nd-row2{grid-template-columns:1fr 1fr}.nd-lat{grid-column:1/-1}}

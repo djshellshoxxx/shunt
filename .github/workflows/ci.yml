@@ -1,36 +1,145 @@
 name: ci
 
 on:
+  # Branches with a PR are covered by pull_request; push runs only on the default
+  # branch, so each PR commit is built once instead of twice.
   push:
-    branches: ["**"]
+    branches: ["claude/wizardly-mayer-1dyo4l", "main"]
+    paths-ignore: ["docs/**", "**/*.md", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Cache reference captures
+        uses: actions/cache@v4
+        with:
+          path: tests/captures
+          key: captures-${{ hashFiles('tests/captures/MANIFEST.tsv') }}
+      - name: Fetch reference captures
+        run: tools/fetch_captures.sh
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --parallel 4
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --parallel 4 --output-on-failure
 
   aarch64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross toolchain
+        with:
+          fetch-depth: 1
+      - name: Cache reference captures
+        uses: actions/cache@v4
+        with:
+          path: tests/captures
+          key: captures-${{ hashFiles('tests/captures/MANIFEST.tsv') }}
+      - name: Fetch reference captures
+        run: tools/fetch_captures.sh
+      - name: Install cross toolchain and emulator
         run: sudo apt-get update && sudo apt-get install -y ninja-build g++-aarch64-linux-gnu qemu-user
       - name: Configure
         run: >
           cmake -S . -B build-arm -G Ninja -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64
-          -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_EXE_LINKER_FLAGS=-static
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake
       - name: Build
-        run: cmake --build build-arm
-      - name: Unit tests under QEMU
-        run: qemu-aarch64 build-arm/ShuntTests
+        run: cmake --build build-arm --parallel 4
+      - name: Tests under QEMU user mode
+        run: ctest --test-dir build-arm --parallel 4 --output-on-failure
+
+  sanitize-asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Cache reference captures
+        uses: actions/cache@v4
+        with:
+          path: tests/captures
+          key: captures-${{ hashFiles('tests/captures/MANIFEST.tsv') }}
+      - name: Fetch reference captures
+        run: tools/fetch_captures.sh
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure (ASan + UBSan)
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSHUNT_SANITIZE=address
+      - name: Build
+        run: cmake --build build-asan --parallel 4
+      - name: Test
+        run: ctest --test-dir build-asan --parallel 4 --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+
+  sanitize-tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Cache reference captures
+        uses: actions/cache@v4
+        with:
+          path: tests/captures
+          key: captures-${{ hashFiles('tests/captures/MANIFEST.tsv') }}
+      - name: Fetch reference captures
+        run: tools/fetch_captures.sh
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Lower ASLR entropy (TSan needs it on newer kernels)
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Configure (TSan)
+        run: cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSHUNT_SANITIZE=thread
+      - name: Build
+        run: cmake --build build-tsan --parallel 4
+      - name: Test (the simulator process test is excluded)
+        run: ctest --test-dir build-tsan --parallel 4 --output-on-failure -E shuntsim_localhost
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+
+  ui-smoke:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_VERSION: "1.49.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 4 --target shunt_headless shuntsim
+      - name: Install Playwright and its Chromium
+        run: |
+          npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/pw" "playwright@$PLAYWRIGHT_VERSION"
+          npx -y "playwright@$PLAYWRIGHT_VERSION" install --with-deps chromium
+      - name: UI smoke test
+        run: node tools/ui_smoke.js --build-dir build --out ui-smoke-out
+        env:
+          NODE_PATH: ${{ runner.temp }}/pw/node_modules
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-screenshots
+          path: ui-smoke-out
+          if-no-files-found: ignore

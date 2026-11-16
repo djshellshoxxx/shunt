@@ -47,6 +47,21 @@ void Json::erase(const std::string& key) {
     for (auto it = obj_.begin(); it != obj_.end(); ++it) if (it->first == key) { obj_.erase(it); return; }
 }
 
+void Json::merge(const Json& patch) {
+    if (patch.type_ != Object) { *this = patch; return; }
+    if (type_ != Object) *this = object();
+    for (auto& kv : patch.obj_) {
+        if (kv.second.type_ == Null) { erase(kv.first); continue; }
+        Json& dst = (*this)[kv.first];
+        if (kv.second.type_ == Object) {
+            if (dst.type_ != Object) dst = object();
+            dst.merge(kv.second);
+        } else {
+            dst = kv.second;
+        }
+    }
+}
+
 void Json::write(std::string& o) const {
     switch (type_) {
     case Null: o += "null"; break;

@@ -11,6 +11,18 @@ endif()
 
 add_compile_options(-Wall -Wextra)
 
+# FS-TEST section 1: -DSHUNT_SANITIZE=address (ASan+UBSan) or thread (TSan).
+set(SHUNT_SANITIZE "" CACHE STRING "Sanitizer: '', address, thread")
+if(SHUNT_SANITIZE STREQUAL "address")
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+  add_link_options(-fsanitize=address,undefined)
+elseif(SHUNT_SANITIZE STREQUAL "thread")
+  add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=thread)
+elseif(NOT SHUNT_SANITIZE STREQUAL "")
+  message(FATAL_ERROR "SHUNT_SANITIZE must be '', address or thread")
+endif()
+
 find_package(Threads REQUIRED)
 
 # ---- shunt_net: packets, device table, claim machine, master tracker, pcapng, sockets
@@ -31,7 +43,8 @@ add_library(shunt_clock STATIC clock/src/ClockEngine.cpp)
 target_include_directories(shunt_clock PUBLIC clock/include net/include)
 
 # ---- shunt_log: tracklist events and exporters
-add_library(shunt_log STATIC log/src/Tracklist.cpp log/src/RekordboxXml.cpp)
+file(GLOB SHUNT_LOG_SOURCES CONFIGURE_DEPENDS log/src/*.cpp)
+add_library(shunt_log STATIC ${SHUNT_LOG_SOURCES})
 target_include_directories(shunt_log PUBLIC log/include net/include)
 
 # ---- shunt_meta: dbserver client and streaming rekordbox XML reader (RS-04)
@@ -44,12 +57,9 @@ if(WIN32)
 endif()
 
 # ---- shunt_out: OSC, MIDI clock, Link logic, output manager (no JUCE, no third-party code)
-add_library(shunt_out STATIC
-  out/src/Osc.cpp
-  out/src/Midi.cpp
-  out/src/Link.cpp
-  out/src/OutputManager.cpp
-)
+# Globbed so features add files (MidiIn, PulseGenerator, ...) without CMake edits.
+file(GLOB SHUNT_OUT_SOURCES CONFIGURE_DEPENDS out/src/*.cpp)
+add_library(shunt_out STATIC ${SHUNT_OUT_SOURCES})
 target_include_directories(shunt_out PUBLIC out/include)
 target_link_libraries(shunt_out PUBLIC shunt_clock shunt_net)
 option(SHUNT_WITH_LINK "Build the Ableton Link SDK binding (needs Link.hpp on the include path)" OFF)
@@ -58,16 +68,29 @@ if(SHUNT_WITH_LINK)
 endif()
 
 # ---- shunt_app: JSON, settings, core runtime, HTTP/WebSocket server, embedded web UI
+# The served index page is built from ui/index.template.html + ui/css/*.css + ui/js/*.js
+# (FS-00 section 5); new UI modules are picked up by the glob, no CMake edit needed.
+file(GLOB SHUNT_UI_MODULES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/ui/css/*.css ${CMAKE_SOURCE_DIR}/ui/js/*.js)
+set(SHUNT_INDEX_HTML ${CMAKE_BINARY_DIR}/gen/index.html)
+add_custom_command(OUTPUT ${SHUNT_INDEX_HTML}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/gen
+  COMMAND ${CMAKE_COMMAND} -DUI_DIR=${CMAKE_SOURCE_DIR}/ui -DOUT=${SHUNT_INDEX_HTML} -P ${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/ui/index.template.html ${SHUNT_UI_MODULES} ${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake)
 foreach(ui index overlay)
   string(SUBSTRING ${ui} 0 1 first)
   string(TOUPPER ${first} FIRST)
   string(SUBSTRING ${ui} 1 -1 rest)
   set(sym k${FIRST}${rest}Html)
   set(gen ${CMAKE_BINARY_DIR}/gen/${ui}_html.cpp)
+  if(ui STREQUAL "index")
+    set(src ${SHUNT_INDEX_HTML})
+  else()
+    set(src ${CMAKE_SOURCE_DIR}/ui/${ui}.html)
+  endif()
   add_custom_command(OUTPUT ${gen}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/gen
-    COMMAND ${CMAKE_COMMAND} -DIN=${CMAKE_SOURCE_DIR}/ui/${ui}.html -DOUT=${gen} -DSYMBOL=${sym} -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
-    DEPENDS ${CMAKE_SOURCE_DIR}/ui/${ui}.html ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
+    COMMAND ${CMAKE_COMMAND} -DIN=${src} -DOUT=${gen} -DSYMBOL=${sym} -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${src} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
   list(APPEND UI_SOURCES ${gen})
 endforeach()
 add_library(shunt_app STATIC
@@ -75,17 +98,37 @@ add_library(shunt_app STATIC
   app/src/Settings.cpp
   app/src/Http.cpp
   app/src/Core.cpp
+  app/src/CoreFeatures.cpp
+  app/src/ControlRegistry.cpp
+  app/src/MetaStore.cpp
+  app/src/Feature.cpp
   app/src/Api.cpp
   ${UI_SOURCES}
 )
 target_include_directories(shunt_app PUBLIC app/include)
 target_link_libraries(shunt_app PUBLIC shunt_net shunt_clock shunt_log shunt_out shunt_meta Threads::Threads)
 
+# ---- shunt_features: one IFeature per app/src/features/*.cpp (FS-00 section 1). An OBJECT
+# library so SHUNT_REGISTER_FEATURE objects are never dropped by the static linker; every
+# executable that links shunt_app links shunt_features too. Empty glob: a generated stub.
+file(GLOB SHUNT_FEATURE_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/app/src/features/*.cpp)
+if(NOT SHUNT_FEATURE_SOURCES)
+  set(SHUNT_FEATURE_SOURCES ${CMAKE_BINARY_DIR}/gen/features_none.cpp)
+  if(NOT EXISTS ${SHUNT_FEATURE_SOURCES})
+    file(WRITE ${SHUNT_FEATURE_SOURCES} "// Generated: no feature sources in app/src/features yet.\nnamespace shunt::app { int shuntNoFeatures = 0; }\n")
+  endif()
+endif()
+add_library(shunt_features OBJECT ${SHUNT_FEATURE_SOURCES})
+target_link_libraries(shunt_features PUBLIC shunt_app)
+
 # ---- tools
 add_executable(shunt_headless tools/shunt_headless/main.cpp)
-target_link_libraries(shunt_headless PRIVATE shunt_app)
+target_link_libraries(shunt_headless PRIVATE shunt_features shunt_app)
 
-add_executable(shuntsim tools/shuntsim/main.cpp)
+# Simulator: main plus the scenario registry (FS-TEST section 2).
+file(GLOB SHUNT_SIM_SOURCES CONFIGURE_DEPENDS tools/shuntsim/*.cpp tools/shuntsim/scenarios/*.cpp)
+add_executable(shuntsim ${SHUNT_SIM_SOURCES})
+target_include_directories(shuntsim PRIVATE tools/shuntsim)
 target_link_libraries(shuntsim PRIVATE shunt_net)
 
 add_executable(shunt_cli tools/shunt_cli/main.cpp)
@@ -93,22 +136,46 @@ target_link_libraries(shunt_cli PRIVATE shunt_net shunt_clock shunt_log)
 
 # ---- tests
 enable_testing()
-add_executable(ShuntTests
-  tests/main.cpp
-  tests/test_packets.cpp
-  tests/test_net.cpp
-  tests/test_clock.cpp
-  tests/test_log.cpp
-  tests/test_out.cpp
-  tests/test_app.cpp
-  tests/test_meta.cpp
-)
+# Tests are globbed so features add files, not CMake edits (FS-00 section 2).
+file(GLOB SHUNT_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp tests/features/test_*.cpp)
+add_executable(ShuntTests tests/main.cpp ${SHUNT_TEST_SOURCES})
 target_include_directories(ShuntTests PRIVATE tests)
-target_link_libraries(ShuntTests PRIVATE shunt_net shunt_clock shunt_log shunt_out shunt_app)
+target_link_libraries(ShuntTests PRIVATE shunt_features shunt_net shunt_clock shunt_log shunt_out shunt_app)
 add_test(NAME ShuntTests COMMAND ShuntTests)
+# SIM-T* tests run the simulator binary (FS-TEST section 2).
+set(_shunt_test_env "SHUNTSIM_PATH=$<TARGET_FILE:shuntsim>")
+if(CMAKE_CROSSCOMPILING_EMULATOR)
+  list(JOIN CMAKE_CROSSCOMPILING_EMULATOR " " _shunt_emu0)
+  list(APPEND _shunt_test_env "SHUNT_SIM_LAUNCHER=${_shunt_emu0}")
+endif()
+set_tests_properties(ShuntTests PROPERTIES ENVIRONMENT "${_shunt_test_env}")
+# FS-00 section 6: the UI build rejects duplicate page ids and missing modules.
+add_test(NAME ui_build_checks
+  COMMAND ${CMAKE_COMMAND} -DUI_DIR=${CMAKE_SOURCE_DIR}/ui -DWORK=${CMAKE_BINARY_DIR}/ui_build_checks
+          -DBUILD_UI=${CMAKE_SOURCE_DIR}/cmake/build_ui.cmake -P ${CMAKE_SOURCE_DIR}/cmake/test_build_ui.cmake)
 add_test(NAME shuntsim_localhost
   COMMAND shunt_cli --addr 127.0.0.1 --mode follow --selftest-sim $<TARGET_FILE:shuntsim>)
 set_tests_properties(shuntsim_localhost PROPERTIES TIMEOUT 60)
+if(CMAKE_CROSSCOMPILING_EMULATOR)
+  # The selftest spawns the cross-built simulator; prefix it with the emulator.
+  list(JOIN CMAKE_CROSSCOMPILING_EMULATOR " " _shunt_emu)
+  set_tests_properties(shuntsim_localhost PROPERTIES ENVIRONMENT "SHUNT_SIM_LAUNCHER=${_shunt_emu}")
+endif()
+
+# ---- N-T2 replay tests against real captures (fetched by tools/fetch_captures.sh)
+set(SHUNT_CAPTURES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/captures CACHE PATH "Directory with reference captures")
+function(shunt_replay_test name file regex)
+  if(EXISTS ${SHUNT_CAPTURES_DIR}/${file})
+    add_test(NAME replay_${name} COMMAND shunt_cli --replay ${SHUNT_CAPTURES_DIR}/${file} --speed 0)
+    set_tests_properties(replay_${name} PROPERTIES PASS_REGULAR_EXPRESSION "${regex}"
+                         FAIL_REGULAR_EXPRESSION "[1-9][0-9]* parse errors" TIMEOUT 120)
+  endif()
+endfunction()
+# Golden expectations: device numbers/kinds and master behaviour, zero parse errors on 50000..50002.
+shunt_replay_test(powerup powerup.pcapng "device 2 joined CDJ-2000nexus \\(nexus\\).*: [0-9]+ parsed, 0 parse errors, 3 devices, 0 master changes")
+shunt_replay_test(to_virtual to-virtual.pcapng "device 5 joined Virtual CDJ.*: [0-9]+ parsed, 0 parse errors, 4 devices")
+shunt_replay_test(s06_load_and_play S06-load-and-play.pcapng "master 0 -> 1.*0 parse errors, 2 devices, 1 master changes, 1[0-9][0-9] master beats, bpm 12[78]\\.")
+shunt_replay_test(sync_master Sync-Master.pcapng "master 2 -> 33.*master 33 -> 3.*0 parse errors, 3 devices, 6 master changes")
 
 # Metadata tests are a separate binary (fake dbserver on loopback).
 file(GLOB SHUNT_META_TESTS CONFIGURE_DEPENDS tests/meta/*.cpp)
