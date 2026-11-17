@@ -125,10 +125,11 @@ std::optional<CapturedDatagram> PcapngReader::next() {
             while (o + 4 <= bodyLen) {
                 const uint16_t code = rd16(body + o), olen = rd16(body + o + 2);
                 if (code == 0) break;
-                if (code == 9 && olen >= 1) {
+                if (code == 9 && olen >= 1 && o + 4 < bodyLen) {
+                    // if_tsresol: clamp so the divisor stays representable (2^63 / 10^19).
                     const uint8_t r = body[o + 4];
-                    if (r & 0x80) div = uint64_t(1) << (r & 0x7f);
-                    else { div = 1; for (int i = 0; i < r; ++i) div *= 10; }
+                    if (r & 0x80) div = uint64_t(1) << ((r & 0x7f) > 63 ? 63 : (r & 0x7f));
+                    else { div = 1; for (int i = 0; i < r && i < 19; ++i) div *= 10; }
                 }
                 o += 4 + ((olen + 3) & ~3u);
             }
@@ -139,7 +140,8 @@ std::optional<CapturedDatagram> PcapngReader::next() {
         const uint32_t iface = rd32(body);
         const uint64_t ts = (uint64_t(rd32(body + 4)) << 32) | rd32(body + 8);
         const uint32_t capLen = rd32(body + 12);
-        if (20 + capLen > bodyLen) continue;
+        // 64-bit sum: a crafted capLen near 2^32 must not wrap past the check.
+        if (uint64_t(capLen) + 20 > bodyLen) continue;
         const uint8_t* pkt = body + 20;
         const uint16_t link = iface < linkTypes_.size() ? linkTypes_[iface] : kLinkEthernet;
         const uint64_t div = iface < tsDivisors_.size() ? tsDivisors_[iface] : 1'000'000;

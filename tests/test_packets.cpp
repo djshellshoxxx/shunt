@@ -31,7 +31,7 @@ const std::array<uint8_t, 6> kMac{0x00, 0xe0, 0x36, 0x12, 0x34, 0x56};
 
 TEST_CASE("P-T1 keep-alive 0x06 decodes every field") {
     Golden g(54, 0x06, "CDJ-3000", true);
-    g.u8(0x20, 0x01).u8(0x21, 0x01).u16(0x22, 0x0036).u8(0x24, 3).u8(0x25, 0x01)
+    g.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 3).u8(0x25, 0x01)
      .bytes(0x26, {0x00, 0xe0, 0x36, 0x12, 0x34, 0x56}).u32(0x2c, 0xa9fe0a03).u8(0x30, 5).u8(0x34, 0x01).u8(0x35, 0x64);
     auto ev = parseAnnounce(g.b.data(), g.b.size(), 1234, 0xa9fe0a03);
     REQUIRE(ev.has_value());
@@ -44,7 +44,7 @@ TEST_CASE("P-T1 keep-alive 0x06 decodes every field") {
     CHECK_EQ(ev->keepAlive.ip, 0xa9fe0a03u);
     CHECK_EQ(ev->keepAlive.peerCount, 5);
     CHECK(ev->keepAlive.cdj3000Compatible);
-    g.u8(0x35, 0x00).u8(0x21, 0x02);
+    g.u8(0x35, 0x00).u8(0x34, 0x02);
     ev = parseAnnounce(g.b.data(), g.b.size(), 0);
     REQUIRE(ev.has_value());
     CHECK(!ev->keepAlive.cdj3000Compatible);
@@ -258,10 +258,47 @@ TEST_CASE("P-T2 keep-alive builder: 54 bytes, documented layout, 0x35 == 0x64") 
     const size_t n = buildKeepAlive(out, p);
     CHECK_EQ(n, kKeepAliveLen);
     Golden g(54, 0x06, "Shunt", true);
-    g.u8(0x20, 0x01).u8(0x21, 0x01).u16(0x22, 0x0036).u8(0x24, 7).u8(0x25, 0x01)
+    g.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 7).u8(0x25, 0x01)
      .bytes(0x26, {0x00, 0xe0, 0x36, 0x12, 0x34, 0x56}).u32(0x2c, 0xc0a80105).u8(0x30, 6).u8(0x34, 0x01).u8(0x35, 0x64);
     CHECK(std::memcmp(out, g.b.data(), 54) == 0);
     CHECK_EQ(out[0x35], 0x64);
+}
+
+// Regression: byte 0x21 is a protocol variant, not the device kind. Every device on the
+// 2026-07-29 CDJ-2000nexus captures (CDJs, DJM and a virtual CDJ) sends 0x02 there in
+// keep-alives; the kind is at 0x34. Before this fix CDJs were classified as mixers.
+TEST_CASE("P-T1 keep-alive kind comes from 0x34, not 0x21") {
+    Golden cdj(54, 0x06, "CDJ-2000nexus", true);
+    cdj.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 2).u8(0x25, 0x02).u8(0x34, 0x01);
+    auto ev = parseAnnounce(cdj.b.data(), cdj.b.size(), 0);
+    REQUIRE(ev.has_value());
+    CHECK(ev->keepAlive.kind == DeviceKind::CDJ);
+    Golden djm(54, 0x06, "DJM-2000nexus", true);
+    djm.u8(0x20, 0x01).u8(0x21, 0x02).u16(0x22, 0x0036).u8(0x24, 0x21).u8(0x25, 0x01).u8(0x34, 0x02);
+    ev = parseAnnounce(djm.b.data(), djm.b.size(), 0);
+    REQUIRE(ev.has_value());
+    CHECK(ev->keepAlive.kind == DeviceKind::Mixer);
+}
+
+TEST_CASE("P-T2 byte 0x21 variant per packet type (legacy vs CDJ-3000 compatible)") {
+    uint8_t out[128];
+    buildHello(out, "Shunt", false);                 CHECK_EQ(out[0x21], kVariantLegacy);
+    buildHello(out, "Shunt", true);                  CHECK_EQ(out[0x21], kVariantHello3000);
+    CHECK_EQ(out[0x24], 0x01); CHECK_EQ(out[0x25], 0x64);
+    buildClaimStage1(out, "Shunt", 1, kMac, false);  CHECK_EQ(out[0x21], kVariantLegacy);
+    buildClaimStage1(out, "Shunt", 1, kMac);         CHECK_EQ(out[0x21], kVariantClaim3000);
+    CHECK_EQ(out[0x25], 0x01);
+    buildClaimStage2(out, "Shunt", 1, kMac, 7, 1, 1); CHECK_EQ(out[0x21], kVariantClaim3000);
+    buildClaimStage3(out, "Shunt", 7, 1);            CHECK_EQ(out[0x21], kVariantClaim3000);
+    buildClaimStage3(out, "Shunt", 7, 1, false);     CHECK_EQ(out[0x21], kVariantLegacy);
+    buildDefend(out, "Shunt", 7);                    CHECK_EQ(out[0x21], kVariantLegacy);
+    KeepAliveParams p;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x21], kVariantLegacy);
+    CHECK_EQ(out[0x25], 0x01); CHECK_EQ(out[0x34], 0x01); CHECK_EQ(out[0x35], 0x64);
+    p.firstOnNetwork = true;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x25], 0x02);
+    p.kind = DeviceKind::Mixer;
+    buildKeepAlive(out, p);                          CHECK_EQ(out[0x34], 0x02);
 }
 
 TEST_CASE("P-T2 claim builders produce documented lengths") {
@@ -399,4 +436,21 @@ TEST_CASE("pitch encode/decode") {
     CHECK_EQ(encodePitch(1.0), 0x100000u);
     CHECK_NEAR(decodePitch(encodePitch(0.9375)), 0.9375, 1e-6);
     CHECK_NEAR(decodePitch(0xff100000), 1.0, 1e-12);   // top byte ignored
+}
+
+// Robustness: random and truncated packets must never crash or read out of bounds (run under ASan in audits).
+TEST_CASE("P-T5 parsers survive truncated and random input") {
+    static const uint8_t kMagic[10] = {0x51, 0x73, 0x70, 0x74, 0x31, 0x57, 0x6d, 0x4a, 0x4f, 0x4c};
+    uint32_t seed = 12345;
+    auto rnd = [&seed] { seed = seed * 1664525u + 1013904223u; return uint8_t(seed >> 24); };
+    const uint16_t ports[] = {50000, 50001, 50002};
+    for (int iter = 0; iter < 20000; ++iter) {
+        uint8_t buf[512];
+        for (auto& b : buf) b = rnd();
+        if (iter & 1) std::memcpy(buf, kMagic, sizeof kMagic);
+        if (iter % 3 == 0) buf[0x0a] = uint8_t("\x06\x0a\x00\x02\x04\x08\x28\x0b\x03\x26\x27\x2a\x29"[rnd() % 13]);
+        const size_t len = rnd() | (size_t(rnd() & 1) << 8);
+        for (auto p : ports) (void)shunt::net::parseForPort(p, buf, len, 0);
+    }
+    CHECK(true);
 }

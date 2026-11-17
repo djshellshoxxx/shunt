@@ -1,0 +1,7 @@
+file(GLOB SHUNT_META_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+add_library(shunt_meta STATIC ${SHUNT_META_SOURCES})
+target_include_directories(shunt_meta PUBLIC include)
+target_link_libraries(shunt_meta PUBLIC Threads::Threads)
+if(WIN32)
+  target_link_libraries(shunt_meta PUBLIC ws2_32)
+endif()

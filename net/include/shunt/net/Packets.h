@@ -41,6 +41,11 @@ std::optional<Event> parseForPort(uint16_t port, const uint8_t* data, size_t len
 
 // Builders. Each writes into `out` (must hold at least the documented length)
 // and returns the number of bytes written.
+// Byte 0x21 of port-50000 packets (see Packets.cpp announceHeader).
+constexpr uint8_t kVariantLegacy = 0x02;
+constexpr uint8_t kVariantClaim3000 = 0x03;
+constexpr uint8_t kVariantHello3000 = 0x04;
+
 struct KeepAliveParams {
     const char* name = "Shunt";
     DeviceKind kind = DeviceKind::CDJ;
@@ -49,13 +54,15 @@ struct KeepAliveParams {
     uint32_t ip = 0;
     uint8_t peerCount = 1;
     bool cdj3000Compatible = true;
+    bool firstOnNetwork = false;   // latched at start-up (byte 0x25)
 };
 size_t buildKeepAlive(uint8_t* out, const KeepAliveParams& p);
 size_t buildHello(uint8_t* out, const char* name, bool cdj3000Compatible, DeviceKind kind = DeviceKind::CDJ);
-size_t buildClaimStage1(uint8_t* out, const char* name, uint8_t counter, const std::array<uint8_t, 6>& mac);
+size_t buildClaimStage1(uint8_t* out, const char* name, uint8_t counter, const std::array<uint8_t, 6>& mac,
+                        bool cdj3000Compatible = true);
 size_t buildClaimStage2(uint8_t* out, const char* name, uint32_t ip, const std::array<uint8_t, 6>& mac,
-                        uint8_t number, uint8_t counter, uint8_t autoFlag);
-size_t buildClaimStage3(uint8_t* out, const char* name, uint8_t number, uint8_t counter);
+                        uint8_t number, uint8_t counter, uint8_t autoFlag, bool cdj3000Compatible = true);
+size_t buildClaimStage3(uint8_t* out, const char* name, uint8_t number, uint8_t counter, bool cdj3000Compatible = true);
 size_t buildDefend(uint8_t* out, const char* name, uint8_t number);
 
 // Builders used by the simulator and (v2) Lead mode.

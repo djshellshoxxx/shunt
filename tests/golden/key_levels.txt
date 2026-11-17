@@ -1,0 +1,27 @@
+# FS-02 key levels. Rows: reference key, columns: cued key, both in the order 1A..12A 1B..12B.
+# P perfect, C compatible, E energy, X clash. Generated once, reviewed against the Mixed In Key wheel.
+    1A  2A  3A  4A  5A  6A  7A  8A  9A  10A 11A 12A 1B  2B  3B  4B  5B  6B  7B  8B  9B  10B 11B 12B 
+1A  P   C   E   X   X   X   X   X   X   X   E   C   C   X   X   X   X   X   X   X   X   X   X   X   
+2A  C   P   C   E   X   X   X   X   X   X   X   E   X   C   X   X   X   X   X   X   X   X   X   X   
+3A  E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   
+4A  X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   
+5A  X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   
+6A  X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   
+7A  X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   
+8A  X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   X   
+9A  X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   X   
+10A X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   X   X   C   X   X   
+11A E   X   X   X   X   X   X   X   E   C   P   C   X   X   X   X   X   X   X   X   X   X   C   X   
+12A C   E   X   X   X   X   X   X   X   E   C   P   X   X   X   X   X   X   X   X   X   X   X   C   
+1B  C   X   X   X   X   X   X   X   X   X   X   X   P   C   E   X   X   X   X   X   X   X   E   C   
+2B  X   C   X   X   X   X   X   X   X   X   X   X   C   P   C   E   X   X   X   X   X   X   X   E   
+3B  X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   X   
+4B  X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   X   
+5B  X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   X   
+6B  X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   X   
+7B  X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   X   
+8B  X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   X   
+9B  X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   X   
+10B X   X   X   X   X   X   X   X   X   C   X   X   X   X   X   X   X   X   X   E   C   P   C   E   
+11B X   X   X   X   X   X   X   X   X   X   C   X   E   X   X   X   X   X   X   X   E   C   P   C   
+12B X   X   X   X   X   X   X   X   X   X   X   C   C   E   X   X   X   X   X   X   X   E   C   P   

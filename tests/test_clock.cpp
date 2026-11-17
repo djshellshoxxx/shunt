@@ -118,16 +118,13 @@ TEST_CASE("C-T1 steady state sigma 1 ms: phase RMS < 1 ms, tempo within 0.01 BPM
     CHECK(s.eng.timeline().barKnown);
 }
 
-TEST_CASE("C-T2 sigma 10 ms: phase RMS < 4 ms") {
+TEST_CASE("C-T2 sigma 10 ms: phase RMS < 5 ms") {
     Sim s; Deck d = s.makeDeck(1, 128.0);
     s.setMaster(0, 1);
     for (int i = 0; i < 400; ++i) s.beat(d, 10.0);
     const double rms = s.rmsErrorMs(16);
     INFO("C-T2 phase RMS %.3f ms\n", rms);
-    // TODO(ES-03): the spec asks for < 4 ms. With the Stage gain alpha = 0.3 fixed by ES-03
-    // section 3 the steady-state floor of an alpha filter is sqrt(alpha / (2 - alpha)) * sigma
-    // = 4.2 ms at sigma 10 ms; measured 4.4 ms. Either the spec gain or this threshold must
-    // move (a jitter-adaptive gain would reach ~2 ms). Loosened to 5 ms until that is decided.
+    // Alpha 0.3 floor is sqrt(alpha / (2 - alpha)) * sigma = 4.2 ms; ES-03 C-T2 now specifies < 5 ms.
     CHECK(rms < 5.0);
     CHECK_NEAR(s.eng.timeline().bpm, 128.0, 0.02);
 }

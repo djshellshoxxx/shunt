@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shunt overlay</title>
+<style>
+html,body{margin:0;background:transparent;color:#fff;font:600 28px system-ui,sans-serif}
+.box{display:inline-flex;align-items:center;gap:18px;margin:16px;padding:14px 22px;border-radius:16px;background:#0b0f14d9;border:1px solid #2ee6c455;text-shadow:0 1px 3px #000}
+.bpm{font:700 44px ui-monospace,Menlo,Consolas,monospace;color:#2ee6c4}.sub{font-size:16px;color:#9fb0c4;font-weight:500}
+.beat{display:flex;gap:6px}.beat i{width:26px;height:8px;border-radius:9px;background:#34425a}.beat i.on{background:#4aa3ff;box-shadow:0 0 10px #4aa3ff}
+</style></head><body>
+<div class="box"><div><div id="np">Waiting for a track…</div><div class="sub" id="sub"></div></div><div><div class="bpm" id="bpm">---.-</div><div class="beat" id="beat"><i></i><i></i><i></i><i></i></div></div></div>
+<script>
+let rows=-1;
+function conn(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ws.onmessage=async e=>{const s=JSON.parse(e.data);
+ document.getElementById('bpm').textContent=s.bpm>0?s.bpm.toFixed(1):'---.-';
+ document.querySelectorAll('#beat i').forEach((b,i)=>b.classList.toggle('on',s.playing&&s.barKnown&&i+1===s.beatInBar));
+ if(s.tracks!==rows){rows=s.tracks;const t=await (await fetch('/api/tracklist')).json();const r=t.rows[t.rows.length-1];
+  document.getElementById('np').textContent=r?((r.artist&&r.title)?r.artist+' - '+r.title:'Track ID '+r.rekordboxId):'Waiting for a track…';
+  document.getElementById('sub').textContent=s.masterName?'Master: '+s.masterName:'';}};
+ws.onclose=()=>setTimeout(conn,1500);}
+conn();
+</script></body></html>

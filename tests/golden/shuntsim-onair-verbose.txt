@@ -1,0 +1,15 @@
+scenario onair t=0.000 deck 1 channel on air
+scenario onair t=0.000 deck 2 channel off air
+scenario onair t=0.000 deck 3 channel off air
+scenario onair t=0.000 deck 4 channel off air
+scenario onair t=0.000 deck 1 master and on air
+scenario onair t=10.000 deck 1 channel off air
+scenario onair t=10.000 deck 2 channel on air
+scenario onair t=10.000 crossfade to deck 2
+scenario onair t=12.000 deck 2 master
+scenario onair t=30.000 deck 1 channel off air
+scenario onair t=30.000 deck 2 channel off air
+scenario onair t=30.000 deck 3 channel off air
+scenario onair t=30.000 deck 4 channel off air
+scenario onair t=30.000 all channels off
+scenario onair t=36.000 deck 2 channel on air
