@@ -14,9 +14,9 @@ appliance ("Shunt Box"). C++17, JUCE 8, CMake, same toolchain as
 [Vivisect](https://github.com/djshellshoxxx/faultline) and
 [Pacemaker](https://github.com/djshellshoxxx/pacemaker).
 
-Status: protocol core, clock engine, MIDI clock, OSC, Link logic (SDK binding
-pending licence), tracklist logger and a web UI are implemented and tested.
-The JUCE desktop shell and the Box image are next.
+Status: early implementation. The repository contains C++17 networking, clock-engine and tracklist/logging libraries, CLI and simulation tools, and test targets. The proposed desktop application, plugin integrations and Raspberry Pi appliance are not established by the current root build configuration as completed releases.
+
+The integrated headless build also includes MIDI clock, OSC, Link logic and a web UI. The optional Ableton Link SDK binding is disabled by default and requires a separately supplied SDK. See [LEGAL.md](LEGAL.md) for the project’s licence and required attribution.
 
 ## Try it
 
